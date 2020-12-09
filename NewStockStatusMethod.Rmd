@@ -68,6 +68,8 @@ test2019assess <- stockAssessmentSummary %>%
          F.Fmsy = `F/Fmsy`,
          B.Bmsy = `B/Bmsy`)
 
+write.csv(test2019assess, here("stockSMART2019assess.csv"))
+
 # from get_stocks.R, ecodata 2020
   #assess <- read.csv(file.path(data.dir, "2019assess.csv"))
   assess <- test2019assess
@@ -387,6 +389,11 @@ ggplot(data = stock_status) +
 Mid-Atlantic: Mackerel B.Bmsy is different, lower in stockSMART.
 New England: GOM Cod called F and B missing in stockSMART. Hakes are different. Wolffish missing from stockSMART?
 
+Comparing the 2019assess.csv with the stockSMART2019assess.csv, discrepancies are:
+
+1. Mackerel is correct in stockSMART. The 2019assess.csv spreadsheet has Blimit entered where Bmsy should be.
+2. 
+
 ### Next...
 
 Then apply for assessments up to Dec 2020. Well, max assessment year is 2019, so I guess I still need to fill this in by hand!
@@ -395,3 +402,39 @@ Options:
 
 1. Retain only the fields used by get_stocks.R so maybe I don't break ecodata.
 1. Recreate the entire spreadsheet for all assessments (means they must all be in stocksmart).
+
+#### Decisions
+
+* Update with stockSMART for 2019 and prior records, add only the 2020 assessments by hand. (Is stockSMART the definitive source of status information?)
+
+* Recreate assess spreadsheet fields from stockSMART to act as metadata
+
+* Add 2020 assessments using a script here rather than typing into a spreadsheet
+
+* Retain only Entity.Name, Council, and Code fields (used by `get_stocks`) in decoder
+
+```{r newdecoder}
+
+newdecoder <- read.csv(here("2019decoder.csv")) %>%
+  select(Entity.Name, Code, Council)
+
+write.csv(newdecoder, here("2020decoder.csv"))
+
+```
+
+
+#### 2020 stock assessment source
+
+Used the form here: https://apps-nefsc.fisheries.noaa.gov/saw/sasi/sasi_report_options.php
+
+Files should be up-to-date as of the day of my query, December 9, 2020, according to the website.
+
+Checked the boxes: Year--2020
+
+Checked each available 2020 species and stock area in turn, downloaded .zip of "all files". 
+
+Species with 2020 updates: Acadian redfish, Atlantic halibut, Atlantic herring, Atlantic Sea Scallop, Atlantic surfclam, Atlantic wolffish, Butterfish, Longfin squid, Ocean Pout, Ocean quahog, Red Hake (2 stocks), Silver hake (2 stocks), Windowpane flounder (2 stocks), Winter flounder (3 stocks). 
+
+
+
+

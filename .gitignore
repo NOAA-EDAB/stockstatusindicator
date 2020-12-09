@@ -4,4 +4,6 @@
 .Ruserdata
 *.zip
 *.png
+*.pdf
+.DS_Store
 
