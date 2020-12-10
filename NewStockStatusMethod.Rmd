@@ -407,9 +407,38 @@ Options:
 
 * Update with stockSMART for 2019 and prior records, add only the 2020 assessments by hand. (Is stockSMART the definitive source of status information?)
 
-* Recreate assess spreadsheet fields from stockSMART to act as metadata
+* Recreate assess spreadsheet fields from stockSMART including all fields to act as metadata
+
+```{r newassess}
+
+new2019assess <- stockAssessmentSummary %>%
+  filter(`Science Center` == "NEFSC") %>%
+  rename(Entity.Name = `Stock Name`,
+         Assessment.Year = `Assessment Year`,
+         F.Fmsy = `F/Fmsy`,
+         B.Bmsy = `B/Bmsy`)
+
+```
+
 
 * Add 2020 assessments using a script here rather than typing into a spreadsheet
+
+```{r addrow-replace}
+
+updatespecies <- new2019assess %>%
+  filter(str_detect(Entity.Name, c("redfish|halibut|herring|Sea Scallop|surfclam|wolffish|Butterfish|Longfin squid|Pout|quahog|Red Hake|Silver hake|Windowpane flounder|Winter flounder"
+                                   )))
+
+new2020assess <- new2019assess %>%
+  #add a row for each species with an update, copying most recent data
+  #in that row
+  #update Assessment.Year = 2020
+  #update 
+  
+
+
+```
+
 
 * Retain only Entity.Name, Council, and Code fields (used by `get_stocks`) in decoder
 
