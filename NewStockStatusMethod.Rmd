@@ -425,16 +425,21 @@ new2019assess <- stockAssessmentSummary %>%
 
 ```{r addrow-replace}
 
-updatespecies <- new2019assess %>%
-  filter(str_detect(Entity.Name, c("redfish|halibut|herring|Sea Scallop|surfclam|wolffish|Butterfish|Longfin squid|Pout|quahog|Red Hake|Silver hake|Windowpane flounder|Winter flounder"
-                                   )))
-
-new2020assess <- new2019assess %>%
+#subset stockSMARTsummary for updates species
   #add a row for each species with an update, copying most recent data
-  #in that row
   #update Assessment.Year = 2020
-  #update 
+  #update all other fields
   
+updatespecies <- new2019assess %>%
+  filter(str_detect(Entity.Name, c("redfish|halibut|herring|scallop|surfclam|wolffish|Butterfish|Longfin|pout|quahog|Red hake|Silver hake|Windowpane|Winter flounder"))) %>%
+  group_by(Entity.Name) %>%
+  do(add_row(., Assessment.Year = 2020)) %>%
+  ungroup() %>%
+  fill(!c(Assessment.Year, `Assessment Month`, `Last Data Year`,
+          `Update Type`, `Review Result`, `Assessment Model`, `Model Version`,
+          Citation:`MSY Unit`))
+
+
 
 
 ```
