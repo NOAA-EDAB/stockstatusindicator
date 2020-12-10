@@ -413,10 +413,8 @@ Options:
 
 new2019assess <- stockAssessmentSummary %>%
   filter(`Science Center` == "NEFSC") %>%
-  rename(Entity.Name = `Stock Name`,
-         Assessment.Year = `Assessment Year`,
-         F.Fmsy = `F/Fmsy`,
-         B.Bmsy = `B/Bmsy`)
+  rename(Entity.Name = `Stock Name`) %>%
+  rename_all(list(~make.names(.)))
 
 ```
 
@@ -428,19 +426,33 @@ new2019assess <- stockAssessmentSummary %>%
 #subset stockSMARTsummary for updates species
   #add a row for each species with an update, copying most recent data
   #update Assessment.Year = 2020
-  #update all other fields
+  #update all other fields--nope just got them already compiled!
   
-updatespecies <- new2019assess %>%
-  filter(str_detect(Entity.Name, c("redfish|halibut|herring|scallop|surfclam|wolffish|Butterfish|Longfin|pout|quahog|Red hake|Silver hake|Windowpane|Winter flounder"))) %>%
-  group_by(Entity.Name) %>%
-  do(add_row(., Assessment.Year = 2020)) %>%
-  ungroup() %>%
-  fill(!c(Assessment.Year, `Assessment Month`, `Last Data Year`,
-          `Update Type`, `Review Result`, `Assessment Model`, `Model Version`,
-          Citation:`MSY Unit`))
+# updatespecies <- new2019assess %>%
+#   filter(str_detect(Entity.Name, c("redfish|halibut|herring|scallop|surfclam|wolffish|Butterfish|Longfin|pout|quahog|Red hake|Silver hake|Windowpane|Winter flounder"))) %>%
+#   group_by(Entity.Name) %>%
+#   do(add_row(., Assessment.Year = 2020)) %>%
+#   ungroup() %>%
+#   fill(!c(Assessment.Year, Assessment.Month, Last.Data.Year,
+#           Update.Type, Review.Result, Assessment.Model, Model.Version,
+#           Citation:MSY.Unit))
+
+prelim2020 <- read.csv(here("NE Stock Assessment Results.csv")) %>%
+  filter(Assessment.Year == 2020) %>%
+  rename(Entity.Name = Stock,
+         FSSI.Stock. = FSSI,
+         Estimated.F = Best.F,
+         Estimated.B = Best.B,
+         Review.Result = Review.Type) %>%
+  select(-c(Year, Status.Stock., Record.Status, TimeSeries.Data.,
+            Survey.Links., Adequate, Minimum.F, Maximum.F,
+            Minimum.B, Maximum.B, 
+            Stock.Level.Relative.to.Bmsy:Decision.memo.related.to.inadequate.rebuilding.progress))
 
 
+update2020assess <- bind_rows(new2019assess, prelim2020)
 
+write.csv(update2020assess, here("2020assess.csv"))
 
 ```
 
@@ -469,6 +481,175 @@ Checked each available 2020 species and stock area in turn, downloaded .zip of "
 
 Species with 2020 updates: Acadian redfish, Atlantic halibut, Atlantic herring, Atlantic Sea Scallop, Atlantic surfclam, Atlantic wolffish, Butterfish, Longfin squid, Ocean Pout, Ocean quahog, Red Hake (2 stocks), Silver hake (2 stocks), Windowpane flounder (2 stocks), Winter flounder (3 stocks). 
 
+**Update:** these results were compiled as preliminary information by Jeff Vieser, who is awaiting final NEFSC publication to post to stockSMART. He sent me the spreadsheet `NE Stock Assessment Results.xlsx` 10 December 2020. We will mark these preliminary, pending final number confirmation.
+
+I will spot check the spreadsheet to ensure it matches numbers in the downloaded reports. 
+
+### New Plots with *preliminary* 2020 assessment results {.tabset}
+
+```{r}
+# from get_stocks.R, ecodata 2020
+  #assess <- read.csv(file.path(data.dir, "2019assess.csv"))
+  #decode <- read.csv(file.path(data.dir, "2019decoder.csv"))
+  assess <- read.csv(here("2020assess.csv"))
+  decode <- read.csv(here("2020decoder.csv"))
+
+stock_status_2020 <-
+    assess %>%
+    dplyr::group_by(Entity.Name) %>%
+    dplyr::filter(Assessment.Year == max(Assessment.Year)) %>%
+  #Find last year assessment occurred for each stock
+    dplyr::ungroup() %>%
+    dplyr::left_join(.,decode, by = "Entity.Name") %>% #Join in list of managed species
+    dplyr::select(Entity.Name, Assessment.Year, F.Fmsy, B.Bmsy, Council, Code) %>%
+  #select column variables to keep
+    dplyr::mutate(id = 1:length(Entity.Name)) %>%
+    tidyr::gather(.,Var, Value,-id,-Entity.Name,-Assessment.Year,-Council,-Code) %>%
+  #wide to long
+    dplyr::select(-id) %>%
+    dplyr::rename(`Last assessment` = Assessment.Year,
+                  Stock = Entity.Name) %>% #rename variables for clarity
+    dplyr::mutate(Units = "unitless") %>%
+    dplyr::mutate(Value = replace(Value, which(Code == "N Windowpane" & Var == "F.Fmsy"), NA))
+```
 
 
+#### StockSMART source, Mid-Atlantic
 
+```{r, MAFMC2021plot}
+stock_status <- 
+  stock_status_2020 %>%
+  mutate(Code = recode(Code, "Dogfish" = "Sp. Dogfish" )) %>% 
+  spread(.,Var,Value) %>% 
+  filter(Council %in% c("MAFMC","Both")) %>% 
+  group_by(Stock) %>% 
+  mutate(score = case_when(
+    (B.Bmsy <0.5) ~"a",
+    (F.Fmsy >1) ~ "a", 
+    (F.Fmsy < 1 & B.Bmsy > 0.5 & B.Bmsy < 1) ~ "b",
+    (F.Fmsy < 1 & B.Bmsy > 1) ~ "c"))
+#Plot constants
+y.max <- 2.0 #1.75 mackerel cut off F/Fmsy is 1.8
+x.max <- 2.6
+#A dataframe that defines custom legend for stocks with unknown status
+unknown <- data.frame(text = c("Unknown Status", "Longfin Squid",
+                              "Shortfin Squid", "N. Goosefish", "S. Goosefish"),
+                    x = rep(0.9*x.max,5), y = seq(0.93*y.max,1.4,-.1))
+
+# Custom Color
+custom_color<- c("#56B4E9", "#009E73", "#0072B2")
+#Plotting code
+ggplot(data = stock_status) +
+  geom_vline(xintercept = 1, linetype = "dotted")+
+  geom_vline(xintercept = 0.5, linetype = "dashed")+
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  geom_point(aes(x = B.Bmsy,
+                 y = F.Fmsy,
+                 shape = Council,
+                 color = score)) +
+  geom_text_repel(aes(x = B.Bmsy, #geom_text_repel auto-jitters text around points
+                      y = F.Fmsy,
+                      label = Code, 
+                      color = score), 
+                  show.legend = FALSE, nudge_y = -0.01, nudge_x = 0.05) +
+  scale_color_brewer(palette = "Dark2",
+                     breaks = stock_status$score) +
+  ylim(0,y.max) +
+  xlim(0,x.max) +
+  geom_text(data = unknown, aes(x = x, y = y, label = text), #Custom legend for unknown stock status
+            size = c(4.75,rep(4,4))) +
+  annotate("rect", xmin = 0.8*x.max,
+           xmax = x.max,
+           ymin = 0.65*y.max,
+           ymax = 0.90*y.max,
+           alpha = 0.1) +
+  xlab(expression(~B/B[msy])) +
+  ylab(expression(~F/F[msy])) +
+  guides(color = FALSE) +
+  theme_ts()
+```
+
+
+#### StockSMART source, New England
+
+```{r, NEFMC2021plot}
+
+stock_status <- 
+  stock_status_2020 %>%
+  mutate(Code = recode(Code, "Dogfish" = "Sp. Dogfish" )) %>% 
+  spread(.,Var,Value) %>% 
+  filter(Council %in% c("NEFMC","Both")) %>% 
+  group_by(Stock) %>% 
+  mutate(score = case_when(
+    (B.Bmsy <0.5) ~"a",
+    (F.Fmsy >1) ~ "a", 
+    (F.Fmsy < 1 & B.Bmsy > 0.5 & B.Bmsy < 1) ~ "b",
+    (F.Fmsy < 1 & B.Bmsy > 1) ~ "c"))
+#Plot constants
+y.max <- 1.5
+x.max <- 10
+all_missing <- stock_status %>%
+  filter(is.na(B.Bmsy),is.na(F.Fmsy)) %>% 
+  dplyr::select(Code, Council)
+b_missing <- stock_status %>%
+  filter(is.na(B.Bmsy), !is.na(F.Fmsy)) %>% 
+  dplyr::select(Code, Council)
+f_missing <- stock_status %>%
+  filter(is.na(F.Fmsy), !is.na(B.Bmsy)) %>% 
+  dplyr::select(Code, Council)
+#A dataframe that defines custom legend for stocks with unknown status
+all.df <- data.frame(text = all_missing$Code,
+                    x = rep(x.max*0.9,length(all_missing$Code)),
+                    y = seq(1.45,1.0, length.out = length(all_missing$Code)))
+b.df <- data.frame(text = b_missing$Code,
+                    x = rep(x.max*0.7,length(b_missing$Code)),
+                    y = seq(1.45,1.35, length.out = length(b_missing$Code)))
+f.df <- data.frame(text = f_missing$Code,
+                    x = rep(x.max*0.5,length(f_missing$Code)),
+                    y = seq(1.45,1.2, length.out = length(f_missing$Code)))
+
+#Plotting code
+ggplot(data = stock_status) +
+  geom_vline(xintercept = 1, linetype = "dotted", color = "grey60")+
+  geom_vline(xintercept = 0.5, linetype = "dashed", color = "grey60")+
+  geom_hline(yintercept = 1, linetype = "dashed", color = "grey60") +
+  geom_point(aes(x = B.Bmsy,
+                 y = F.Fmsy,
+                 color = stock_status$score)) +
+  geom_text_repel(aes(x = B.Bmsy, #geom_text_repel auto-jitters text around points
+                      y = F.Fmsy,
+                      label = Code,
+                      color = stock_status$score), show.legend = FALSE,nudge_y = -0.01, nudge_x = 0.05) +
+  ylim(0,y.max) +
+  xlim(0,x.max*1.1) +
+  geom_text(data = all.df, aes(x = x, y = y, label = text),show.legend = FALSE, size = 3)+
+  geom_text(data = b.df, aes(x = x, y = y, label = text),show.legend = FALSE, size = 3)+
+  geom_text(data = f.df, aes(x = x, y = y, label = text),show.legend = FALSE, size = 3)+
+  scale_color_brewer(palette = "Dark2", #Change legend labels for clarity
+                     breaks = stock_status$score) +
+  annotate("rect", xmin = 0.924*x.max,
+           xmax = 1.08*x.max,
+           ymin = 0.645*y.max,
+           ymax = 0.98*y.max,
+           alpha = 0.01) +
+  annotate("text", x = 9, y = 1.5, label = "F and B missing", fontface =2, size = 3)+
+  annotate("rect",  
+             xmin = 0.70*x.max,
+             xmax = 0.85*x.max,
+             ymin = 0.90*y.max,
+             ymax = 1.8,
+             alpha = 0.01) +
+  annotate("text", x = 7, y = 1.5, label = "B missing", fontface =2, size = 3)+
+  annotate("rect", xmin = 0.509*x.max,
+           xmax = 0.681*x.max,
+           ymin = 0.65*y.max,
+           ymax = 0.98*y.max,
+           alpha = 0.01) +
+  annotate("text", x = 5, y = 1.5, label = "F missing", fontface =2, size = 3)+
+  xlab(expression(~B/B[msy])) +
+  ylab(expression(~F/F[msy])) +
+  guides(color = FALSE) +
+  theme_ts()
+
+
+```
