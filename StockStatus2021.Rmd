@@ -5,6 +5,7 @@ date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
   html_document:
     code_fold: hide
+    toc: true
 ---
 
 ```{r setup, include=FALSE}
@@ -18,6 +19,7 @@ library(DT)
 library(stocksmart)
 library(ggrepel)
 library(ecodata)
+library(ggiraph)
 
 ```
 
@@ -62,7 +64,7 @@ assess2021 <- stockAssessmentSummary %>%
          F.Fmsy = `F/Fmsy`,
          B.Bmsy = `B/Bmsy`)
 
-write.csv(assess2021, here("2021assess.csv"))
+write.csv(assess2021, here("assess.csv"))
 
 # from get_stocks.R, ecodata 2020
   #assess <- read.csv(file.path(data.dir, "2019assess.csv"))
@@ -70,7 +72,7 @@ write.csv(assess2021, here("2021assess.csv"))
   #decode <- read.csv(file.path(data.dir, "2019decoder.csv"))
   decode <- read.csv(here("2020decoder.csv"))
   
-write.csv(decode, here("2021decoder.csv"))
+write.csv(decode, here("decoder.csv"))
 
 stock_status_stockSMART <-
     assess %>%
@@ -413,4 +415,52 @@ Checked the boxes: Year--2021
 Species with 2021 updates: Bluefish, Atlantic cod, Atlantic mackerel, Black sea bass, Golden tilefish, Scup, Summer flounder. 
 
 The only ones that have stock status are Mid-Atlantic species and they look like reasonable changes. 
+
+## More fun with stocksmart
+
+### What is total (federally managed) catch from the ecosystem?
+
+I think we should be able to summarize catches from `stocksmart::stockAssessmentData` by RegionalEcosystem:
+
+`r unique(stocksmart::stockAssessmentData$RegionalEcosystem)`
+
+But the issue is converting to common units before summing.
+
+```{r NEUScatch}
+
+NEcatch <- stocksmart::stockAssessmentData %>%
+  filter(RegionalEcosystem == "Northeast Shelf",
+         Metric == "Catch") %>%
+  group_by(StockName) %>%
+  filter(AssessmentYear == max(AssessmentYear)) %>%
+  ungroup() %>%
+  mutate(Catchmt = case_when(Units == "Thousand Metric Tons" ~ Value*1000,
+                             TRUE ~ Value))
+  
+p <- ggplot(NEcatch, aes(x=Year, y=Catchmt, fill = StockName)) +
+  #geom_bar(stat="identity") +
+  geom_bar_interactive(width = 0.95, stat = "identity", show.legend = FALSE,
+                       aes(tooltip = StockName, data_id = StockName))
+  theme(legend.position = "none")
+  
+ggiraph(code=print(p))
+  
+
+NEcatchtt <- NEcatch %>%
+  filter(Units=="Thousand Metric Tons") 
+
+
+```
+
+Units of `Catch` in the Northeast Shelf regional ecosystem, most recent assessments only:
+
+`r unique(NEcatch$Units)`
+
+Which species have catch in thousands of metric tons:
+
+`r unique(NEcatchtt$StockName)`
+
+These were converted to tons in the plot above. 
+
+
 
