@@ -1,0 +1,38 @@
+---
+title: "Multispecies Recruitment"
+author: "Sarah Gaichas"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_fold: hide
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+
+remotes::install_github("https://github.com/NOAA-EDAB/stocksmart")
+
+library(here)
+library(tidyverse)
+library(DT)
+library(stocksmart)
+library(ggrepel)
+library(ecodata)
+library(ggiraph)
+
+```
+
+## Evaluate change in recruitment over time for assessed species
+
+### Get stocksmart info
+
+Can we pull most recent recruitment and SSB or other B outputs from Northeast US stock assessments? Which species do we have?
+
+```{r}
+
+```
+
+
+### Use Perretti code to make anomaly plots
+
