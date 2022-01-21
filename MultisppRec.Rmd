@@ -27,11 +27,34 @@ library(ggiraph)
 
 ### Get stocksmart info
 
-Can we pull most recent recruitment and SSB or other B outputs from Northeast US stock assessments? Which species do we have?
+Can we pull most recent recruitment and SSB or other B outputs from Northeast US stock assessments? Which species do we have? What units are recruitments in?
+
+```{r}
+NErec <- stocksmart::stockAssessmentData %>%
+  filter(RegionalEcosystem == "Northeast Shelf",
+         Metric == "Recruitment") %>%
+  group_by(StockName) %>%
+  filter(AssessmentYear == max(AssessmentYear)) %>%
+  ungroup() 
+
+sppunits <- NErec %>%
+  select(StockName, StockArea, Description, Units) %>%
+  distinct()
+
+datatable(sppunits, rownames = FALSE,
+             options = list(scrollX = TRUE,
+                            pageLength = 35))
+
+  #mutate(Catchmt = case_when(Units == "Thousand Metric Tons" ~ Value*1000,
+  #                          TRUE ~ Value))
+```
+
+Select down to stocks used in SOE productivity anomaly indicator? Won't split them by EPU but could map some stocks to different regions kinda.
 
 ```{r}
 
 ```
+
 
 
 ### Use Perretti code to make anomaly plots
