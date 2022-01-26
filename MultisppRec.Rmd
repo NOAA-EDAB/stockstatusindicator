@@ -70,15 +70,20 @@ datatable(sppunits, rownames = FALSE,
 
 Select down to stocks used in SOE productivity anomaly indicator? Won't split them by EPU but could map some stocks to different regions kinda. Or just pick MA managed stocks in stocksmart? Here just trying to get a list of stocks that have both recruitment and biomass in stocksmart. Weeding out recruitment measures that are not in numbers for now.
 
+Also, lets not use assessments prior to 2019.
+
 ```{r}
 
 # first pass only stocks with both rec in N and bio but keep all years of bio
 
-NErecstocks <- NErec %>%
-  filter(Units %in% c("Thousand Recruits",
+NErecN <- NErec %>%
+  filter(AssessmentYear>2018,
+         Units %in% c("Thousand Recruits",
                       "Number x 1,000,000",
                       "Number x 1,000",
-                      "Million Recruits")) %>%
+                      "Million Recruits")) 
+
+NErecstocks <- NErecN %>%
   select(StockName) %>%
   distinct()
 
@@ -86,45 +91,56 @@ NEbiohasrec <- NEbio %>%
   filter(StockName %in% NErecstocks$StockName)
 
 
-  filter(Units %in% c("Thousand Recruits",
-                      "Number x 1,000,000",
-                      "Number x 1,000",
-                      "Million Recruits",
-                      "Thousand Metric Tons",
-                      "Metric Tons")) %>%
-  pivot_wider() #units need to be the same before this
-
-
-
-NErecbiospp  <-  NErecbio %>%
-  select(StockName) %>%
-  distinct()
-
 ```
 
 Next steps: 
 
 Reconcile the units so inputs are the same across stocks
 
+Units of recruitment in numbers of fish at age 1 is the input to the survey based productivity anomaly indicator. We'll need to convert all to numbers and note the age of recruitment for each stock to shift recruitment appropriately. 
+
+```{r}
+
+NErecNstd <- NErecN %>%
+  mutate(NfishRec = case_when(Units == "Thousand Recruits" ~ Value*1000,
+                              Units == "Number x 1,000,000" ~ Value*1000000,
+                              Units == "Number x 1,000" ~ Value*1000,
+                              Units == "Million Recruits" ~ Value*1000000,
+                              TRUE ~ as.numeric(NA)),
+         AgeRec = as.numeric(stringr::str_extract(Description, "(\\d)+")),
+         SSByr = Year-AgeRec
+         )
+
+```
+
+
 ```{r}
 # a giant case_when for each dataset
 
 
+ filter(Units %in% c("Thousand Recruits",
+                      "Number x 1,000,000",
+                      "Number x 1,000",
+                      "Million Recruits",
+                      "Thousand Metric Tons",
+                      "Metric Tons")) %>%
+
+
 ```
-
-
 
 
 Units of biomass (adult, female, total?)
 ```{r}
-
+NEbioBstd <- NEbiohasrec %>%
+  mutate(SSBkg = case_when(Units == "Thousand Metric Tons" ~ Value*1000000,
+                              Units == "Metric Tons" ~ Value*1000,
+                              TRUE ~ as.numeric(NA))
+         #AgeRec = as.numeric(stringr::str_extract(Description, "(\\d)+")),
+         #SSByr = Year-AgeRec
+         )
 ```
 
 
-Units of recruitment at age 1 (shift rec at age 0?)
-```{r}
-
-```
 
 
 ### Do the Perretti anomaly calculation
