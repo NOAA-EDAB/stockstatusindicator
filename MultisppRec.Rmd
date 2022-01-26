@@ -43,10 +43,8 @@ sppunits <- NErec %>%
 
 datatable(sppunits, rownames = FALSE,
              options = list(scrollX = TRUE,
-                            pageLength = 35))
+                            pageLength = 10))
 
-  #mutate(Catchmt = case_when(Units == "Thousand Metric Tons" ~ Value*1000,
-  #                          TRUE ~ Value))
 ```
 
 Lets check the units for biomass too.
@@ -65,7 +63,7 @@ sppunits <- NEbio %>%
 
 datatable(sppunits, rownames = FALSE,
              options = list(scrollX = TRUE,
-                            pageLength = 35))
+                            pageLength = 10))
 ```
 
 Select down to stocks used in SOE productivity anomaly indicator? Won't split them by EPU but could map some stocks to different regions kinda. Or just pick MA managed stocks in stocksmart? Here just trying to get a list of stocks that have both recruitment and biomass in stocksmart. Weeding out recruitment measures that are not in numbers for now.
@@ -113,23 +111,18 @@ NErecNstd <- NErecN %>%
 
 ```
 
-
-```{r}
-# a giant case_when for each dataset
-
-
- filter(Units %in% c("Thousand Recruits",
-                      "Number x 1,000,000",
-                      "Number x 1,000",
-                      "Million Recruits",
-                      "Thousand Metric Tons",
-                      "Metric Tons")) %>%
-
+Plot each Rec series by SSByr
+```{r, fig.height=14, fig.width=9}
+ggplot(NErecNstd, aes(x=SSByr, y=NfishRec)) +
+  geom_line() +
+  theme_bw() +
+  facet_wrap(~StockName, ncol = 3, scales = "free",
+             labeller = labeller(StockName = label_wrap_gen(35)))
 
 ```
 
 
-Units of biomass (adult, female, total?)
+Units of biomass (all listed as mature/spawning stock or retro adjusted spawning stock) are converted to kg for similarity with survey anomaly code.
 ```{r}
 NEbioBstd <- NEbiohasrec %>%
   mutate(SSBkg = case_when(Units == "Thousand Metric Tons" ~ Value*1000000,
@@ -140,7 +133,15 @@ NEbioBstd <- NEbiohasrec %>%
          )
 ```
 
+Plot each SSB series by Year
+```{r, fig.height=14, fig.width=9}
+ggplot(NEbioBstd, aes(x=Year, y=SSBkg)) +
+  geom_line() +
+  theme_bw() +
+  facet_wrap(~StockName, ncol = 3, scales = "free",
+             labeller = labeller(StockName = label_wrap_gen(35)))
 
+```
 
 
 ### Do the Perretti anomaly calculation
@@ -175,6 +176,7 @@ calc_z <- function(x, ...) {
 }
 ```
 
+This is `trawlr::calc_rec()` full code.
 
 ```{r}
 #' Calculate spawner-recruit anomalies
@@ -453,6 +455,16 @@ calc_rec <- function(survdat,
 
 ```
 
+This is the bit I've pulled out to use with the stock assessment recruitment and SSB series standardized above.
+
+```{r}
+# dataset with each species std rec in SSByr and SSB 
+
+SSrecbio <- NErecNstd %>%
+  select(StockName, SSByr, NfishRec) %>%
+  left_join(NEbioBstd, by = c("SSByr", "Year")) %>%
+  select(StockName, Year, SSByr, NfishRec, SSBkg)
+```
 
 
 ### Use Perretti code to make anomaly plots
