@@ -49,13 +49,399 @@ datatable(sppunits, rownames = FALSE,
   #                          TRUE ~ Value))
 ```
 
-Select down to stocks used in SOE productivity anomaly indicator? Won't split them by EPU but could map some stocks to different regions kinda.
+Lets check the units for biomass too.
 
 ```{r}
+NEbio <- stocksmart::stockAssessmentData %>%
+  filter(RegionalEcosystem == "Northeast Shelf",
+         Metric == "Abundance") %>%
+  group_by(StockName) %>%
+  filter(AssessmentYear == max(AssessmentYear)) %>%
+  ungroup() 
+
+sppunits <- NEbio %>%
+  select(StockName, StockArea, Description, Units) %>%
+  distinct()
+
+datatable(sppunits, rownames = FALSE,
+             options = list(scrollX = TRUE,
+                            pageLength = 35))
+```
+
+Select down to stocks used in SOE productivity anomaly indicator? Won't split them by EPU but could map some stocks to different regions kinda. Or just pick MA managed stocks in stocksmart? Here just trying to get a list of stocks that have both recruitment and biomass in stocksmart. Weeding out recruitment measures that are not in numbers for now.
+
+```{r}
+
+# first pass only stocks with both rec in N and bio but keep all years of bio
+
+NErecstocks <- NErec %>%
+  filter(Units %in% c("Thousand Recruits",
+                      "Number x 1,000,000",
+                      "Number x 1,000",
+                      "Million Recruits")) %>%
+  select(StockName) %>%
+  distinct()
+
+NEbiohasrec <- NEbio %>%
+  filter(StockName %in% NErecstocks$StockName)
+
+
+  filter(Units %in% c("Thousand Recruits",
+                      "Number x 1,000,000",
+                      "Number x 1,000",
+                      "Million Recruits",
+                      "Thousand Metric Tons",
+                      "Metric Tons")) %>%
+  pivot_wider() #units need to be the same before this
+
+
+
+NErecbiospp  <-  NErecbio %>%
+  select(StockName) %>%
+  distinct()
+
+```
+
+Next steps: 
+
+Reconcile the units so inputs are the same across stocks
+
+```{r}
+# a giant case_when for each dataset
+
+
+```
+
+
+
+
+Units of biomass (adult, female, total?)
+```{r}
+
+```
+
+
+Units of recruitment at age 1 (shift rec at age 0?)
+```{r}
+
+```
+
+
+### Do the Perretti anomaly calculation
+
+For the survey data, this is in `trawlr` package `func-data.R`, function `calc_rec()` starting line 798. 
+
+Current SOE indicator using `rs_anom` output of this as input for plotting so need to calculate equivalent of that one.
+
+Modify code to take `stocksmart` inputs converted to common units
+
+This is `trawlr::calc_z` used in `calc_rec()`
+
+```{r}
+# ---------------------------------------------------------
+#' Calculate z-score of vector
+#'
+#'
+#' @param x vector of which to calculate z-score
+#'
+#' @param ... other params that can be fed to mean() or sd()
+#'
+#' @return vector of z-score values of x
+#'
+#' @examples
+#'
+#' x_zscore <- calc_z(x = c(1:10), na.rm = T)
+#'
+#' @export
+
+calc_z <- function(x, ...) {
+  (x - mean(x, ...))/sd(x, ...)
+}
+```
+
+
+```{r}
+#' Calculate spawner-recruit anomalies
+#'
+#' Calculates a time series of spawner-recruit anomalies
+#' (and other anomalies) for all species in survdat. Survdat
+#' must have biological and epu data, so \emph{load_survdat()}
+#' must have been called with \emph(with_bio_epu) = TRUE.
+#'
+#' @param survdat dataframe; from \emph{load_survdat()}
+#'                called with \emph{with_bio_epu} = TRUE.
+#'
+#' @param min_year numeric value; minimum year to include
+#'                 in the recruitment calculations.
+#'
+#' @param max_year numeric value; maximum year to include
+#'                 in the recruitment calculations.
+#'
+#' @param by_epu logical; if TRUE recruitment variables are
+#'               calculated per ecological production unit
+#'               (EPU).
+#'
+#' @param by_taxon logical; if TRUE recruitment variables are
+#'                 calculated per ecological production unit
+#'                 (EPU).
+#'
+#'
+#' @return dataframe with recruitment related variables.
+#'
+#' @examples
+#' calc_rec(survdat = survdat,
+#'          min_year = 1980, max_year = 2008,
+#'          by_epu = TRUE, by_taxon = FALSE)
+#'
+#' @export
+calc_rec <- function(survdat,
+                     min_year,
+                     max_year,
+                     by_epu,
+                     by_taxon,
+                     by_season = FALSE,
+                     len_cutoff = 0.2) {
+
+  # Calculate the mean length at age-1 for species
+  # with age data
+  df_len_at_age1 <-
+    survdat %>%
+    dplyr::filter(YEAR >= (min_year - 1),
+                  YEAR <= (max_year + 1),
+                  !is.na(AGE),
+                  !is.na(LENGTH)) %>%
+    dplyr::group_by(COMNAME, SCINAME) %>%
+    dplyr::do(fit_length_at_age1(AGE = .$AGE,
+                                 LENGTH = .$LENGTH))
+
+
+
+  # Calculate the number of tows in each survey season
+  dat_tows <-
+    survdat %>%
+    dplyr::distinct(CRUISE6, YEAR, SEASON, STATION, STRATUM) %>%
+    dplyr::select(CRUISE6, YEAR, SEASON) %>%
+    dplyr::group_by(CRUISE6, YEAR, SEASON) %>%
+    dplyr::summarise(n_tows = n())
+
+
+  dat_spec_rec <-
+    survdat %>%
+    dplyr::left_join(dat_tows) %>%
+    dplyr::left_join(df_len_at_age1) %>%
+    dplyr::group_by(COMNAME, SCINAME) %>%
+    dplyr::filter(EPU %in% c("MAB", "GB", "GOM")) %>%
+    dplyr::filter(YEAR >= (min_year - 1),
+                  YEAR <= (max_year + 1)) %>%
+    #dplyr::do(trawlr::calc_lw(dat = .)) %>%
+    dplyr::group_by(., COMNAME) %>%
+    { if (by_epu) dplyr::group_by(., EPU, add = T) else . } %>%
+    { if (by_taxon) dplyr::group_by(., order, add = T) else . } %>%
+    { if (by_season) dplyr::group_by(., SEASON, add = T) else . } %>%
+    dplyr::mutate(rank_LENGTH = dplyr::cume_dist(LENGTH),
+                  NUMLEN      = as.numeric(NUMLEN),
+                  INDWT       = as.numeric(INDWT),
+                  WTperLENGTH = INDWT / LENGTH) %>%
+    # Remove NA's
+    dplyr::filter(!is.na(rank_LENGTH)) %>%
+    # If length at age1 exists use it, else use the length
+    # cutoff
+    dplyr::mutate(maturity = ifelse(is.na(length_at_age1),
+                                    ifelse(rank_LENGTH > len_cutoff,
+                                           "spawner",
+                                           "recruit"),
+                                   ifelse(LENGTH > length_at_age1,
+                                          "spawner",
+                                          "recruit"))
+                                        ) %>%
+    dplyr::mutate(ind_sp_abund = ifelse(maturity == "spawner",
+                                        NUMLEN,
+                                        0),
+                  ind_rec_abund = ifelse(maturity == "recruit",
+                                         NUMLEN,
+                                         0),
+                  ind_sp_wl    = ifelse(maturity == "spawner",
+                                        WTperLENGTH,
+                                        NaN),
+                 ind_rec_wl    = ifelse(maturity == "recruit",
+                                        WTperLENGTH,
+                                        NaN),
+                 ind_sp_wl_res = ifelse(maturity == "spawner",
+                                        (INDWT - INDWT_ALLPRED),
+                                        NaN),
+                 ind_rec_wl_res = ifelse(maturity == "recruit",
+                                         (INDWT - INDWT_ALLPRED),
+                                         NaN)) %>%
+    { if (by_taxon == TRUE & by_epu == TRUE) {
+        dplyr::group_by(., YEAR, SEASON,
+                        SCINAME, COMNAME, EPU, order)
+      } else if (by_epu == TRUE) {
+        dplyr::group_by(., YEAR, SEASON,
+                        SCINAME, COMNAME, EPU)
+      } else {
+        dplyr::group_by(., YEAR, SEASON,
+                        SCINAME, COMNAME)
+      }
+    } %>%
+    dplyr::summarise(n_tows = unique(n_tows),
+                     spawners_abund = sum(ind_sp_abund, na.rm = T)/n_tows,
+                     spawners_biom = sum(ind_sp_abund *
+                                         INDWT_PRED, na.rm = T)/n_tows,
+                     recruits_abund = sum(ind_rec_abund, na.rm = T)/n_tows,
+                     recruits_biom = sum(ind_rec_abund *
+                                         INDWT_PRED, na.rm = T)/n_tows,
+                     spawner_wl   = mean(ind_sp_wl, na.rm = T),
+                     recruit_wl   = mean(ind_rec_wl, na.rm = T),
+                     spawner_wl_res = mean(ind_sp_wl_res,
+                                           na.rm = T),
+                     recruit_wl_res = mean(ind_rec_wl_res,
+                                           na.rm = T)) %>%
+    # Calculate log(R/S), log(R), log(S)
+    dplyr::ungroup(.) %>%
+    { if (by_taxon == TRUE & by_epu == TRUE) {
+        dplyr::arrange(., SEASON,
+                       COMNAME, SCINAME, EPU, order, YEAR) %>%
+        dplyr::group_by(., SEASON,
+                        COMNAME, SCINAME, EPU, order)
+      } else if (by_epu == TRUE) {
+        dplyr::arrange(., SEASON,
+                       COMNAME, SCINAME, EPU, YEAR) %>%
+        dplyr::group_by(., SEASON,
+                        COMNAME, SCINAME, EPU)
+      } else if (by_taxon == TRUE) {
+        dplyr::arrange(., SEASON,
+                       COMNAME, SCINAME, order, YEAR) %>%
+        dplyr::group_by(., SEASON,
+                        COMNAME, SCINAME, order)
+      } else {
+        dplyr::arrange(., SEASON,
+                       COMNAME, SCINAME, YEAR) %>%
+        dplyr::group_by(., SEASON,
+                        COMNAME, SCINAME)
+      }
+    } %>%
+    dplyr::mutate(recruits_biom_lead1 = dplyr::lead(recruits_biom,
+                                                    n = 1),
+                  recruits_abund_lead1 = dplyr::lead(recruits_abund,
+                                                     n = 1),
+                  rs         = recruits_abund_lead1/
+                               spawners_biom,
+                  rs_abund   = recruits_abund_lead1/
+                                spawners_abund,
+                  rs_biom    = recruits_biom_lead1/
+                                spawners_biom,
+                  logr_abund = log(recruits_abund_lead1),
+                  logr_biom  = log(recruits_biom_lead1),
+                  logs_abund = log(spawners_abund),
+                  logs_biom  = log(spawners_biom),
+                  logrs      = log(rs),
+                  logrs_abund = log(rs_abund),
+                  logrs_biom  = log(rs_biom),
+                  spawners_abund_lag0_anom =
+                    trawlr::calc_z(spawners_abund,
+                                   na.rm = T),
+                  spawners_biom_lag0_anom =
+                    trawlr::calc_z(spawners_biom,
+                                   na.rm = T),
+                  recruits_abund_lead1_anom =
+                    trawlr::calc_z(recruits_abund_lead1,
+                                   na.rm = T),
+                  recruits_biom_lead1_anom =
+                    trawlr::calc_z(recruits_biom_lead1,
+                                   na.rm = T),
+                  rs_anom       = trawlr::calc_z(rs,
+                                                na.rm = T),
+                  rs_abund_anom = trawlr::calc_z(rs_abund,
+                                                 na.rm = T),
+                  rs_biom_anom = trawlr::calc_z(rs_biom,
+                                                na.rm = T),
+                  logr_abund_anom =
+                    trawlr::calc_z(logr_abund),
+                  logr_biom_anom =
+                    trawlr::calc_z(logr_biom),
+                  logs_abund_anom =
+                    trawlr::calc_z(logs_abund, na.rm = T),
+                  logs_biom_anom =
+                    trawlr::calc_z(logs_biom, na.rm = T),
+                  logrs_anom =
+                    trawlr::calc_z(logrs, na.rm = T),
+                  logrs_abund_anom =
+                    trawlr::calc_z(logrs_abund, na.rm = T),
+                  logrs_biom_anom =
+                    trawlr::calc_z(logrs_biom, na.rm = T),
+                  spawner_wl_anom  =
+                    trawlr::calc_z(spawner_wl),
+                  recruit_wl_lead1 = dplyr::lead(recruit_wl, n = 1),
+                  recruit_wl_lead1_anom =
+                    trawlr::calc_z(recruit_wl_lead1),
+                  spawner_wl_res_anom =
+                    trawlr::calc_z(spawner_wl_res),
+                  recruit_wl_res_lead1 = dplyr::lag(recruit_wl_res, n = 1),
+                  recruit_wl_res_lead1_anom =
+                    trawlr::calc_z(recruit_wl_res_lead1)) %>%
+    # Remove year before minimum and year after maximum
+    dplyr::filter(YEAR >= min_year,
+                  YEAR <= max_year) %>%
+    #Average seasonal anomalies to get yearly anomaly
+    dplyr::group_by(., YEAR, SCINAME, COMNAME) %>%
+    { if (by_epu) dplyr::group_by(., EPU, add = T) else . } %>%
+    { if (by_taxon) dplyr::group_by(., order, add = T) else . } %>%
+    { if (by_season) dplyr::group_by(., SEASON, add = T) else . } %>%
+    dplyr::summarise(
+      spawners_abund_lag0 = mean(spawners_abund,
+                                 na.rm = T),
+      spawners_abund_lag0_anom = mean(spawners_abund_lag0_anom,
+                                      na.rm = T),
+      spawners_biom_lag0 = mean(spawners_biom, na.rm = T),
+      spawners_biom_lag0_anom = mean(spawners_biom_lag0_anom,
+                                     na.rm = T),
+      recruits_abund    = mean(recruits_abund, na.rm = T),
+      recruits_abund_lead1      = mean(recruits_abund_lead1,
+                                        na.rm = T),
+      recruits_abund_lead1_anom = mean(recruits_abund_lead1_anom,
+                                        na.rm = T),
+      recruits_biom_lead1      = mean(recruits_biom_lead1,
+                                       na.rm = T),
+      recruits_biom_lead1_anom  = mean(recruits_biom_lead1_anom,
+                                        na.rm = T),
+      rs                 = mean(rs, na.rm = T),
+      rs_abund           = mean(rs_abund, na.rm = T),
+      rs_biom            = mean(rs_biom, na.rm = T),
+      rs_anom            = mean(rs_anom, na.rm = T),
+      rs_abund_anom      = mean(rs_abund_anom, na.rm = T),
+      rs_biom_anom       = mean(rs_biom_anom, na.rm = T),
+      logr_abund_anom    = mean(logr_abund_anom,
+                                na.rm = T),
+      logr_biom_anom     = mean(logr_biom_anom,
+                                na.rm = T),
+      logs_abund_anom    = mean(logs_abund_anom,
+                                na.rm = T),
+      logs_biom_anom     = mean(logs_biom_anom,
+                                na.rm = T),
+      logrs_anom         = mean(logrs_anom, na.rm = T),
+      logrs_abund_anom    = mean(logrs_abund_anom,
+                                 na.rm = T),
+      logrs_biom_anom     = mean(logrs_biom_anom,
+                                 na.rm = T),
+      spawner_wl_anom     = mean(spawner_wl_anom,
+                                 na.rm = T),
+      recruit_wl_lead1_anom = mean(recruit_wl_lead1_anom,
+                                 na.rm = T),
+      spawner_wl_res_anom = mean(spawner_wl_res_anom,
+                                 na.rm = T),
+      recruit_wl_res_lead1_anom = mean(recruit_wl_res_lead1_anom,
+                                       na.rm = T))
+
+  return(dat_spec_rec)
+}
 
 ```
 
 
 
 ### Use Perretti code to make anomaly plots
+
+```{r}
+
+```
 
