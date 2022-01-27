@@ -150,7 +150,7 @@ For the survey data, this is in `trawlr` package `func-data.R`, function `calc_r
 
 Current SOE indicator using `rs_anom` output of this as input for plotting so need to calculate equivalent of that one.
 
-Modify code to take `stocksmart` inputs converted to common units
+Modify code to take `stocksmart` inputs converted to common units. Because the survey anomalies are calculated in numbers of small fish per kg mature biomass we will convert assessments to those same units.
 
 This is `trawlr::calc_z` used in `calc_rec()`
 
@@ -673,24 +673,24 @@ plot_stackbarcpts_single <- function(YEAR, var2bar,
     tidyr::gather(variable, value, -YEAR, -var2bar) %>%
     dplyr::mutate(var2bar = gsub(pattern      = "_", 
                                  replacement  = " ", 
-                                 x            = var2bar),
-                  var2bar = gsub(pattern      = "Atl.", 
-                                 replacement  = "ATLANTIC", 
-                                 x            = var2bar),
-                  var2bar = gsub(pattern      = "Atl", 
-                                 replacement  = "ATLANTIC", 
-                                 x            = var2bar),
-                  var2bar = gsub(pattern      = "NS and combined", 
-                                 replacement  = "", 
-                                 x            = var2bar),
-                  var2bar = gsub(pattern      = "YT", 
-                                 replacement  = "Yellowtail", 
-                                 x            = var2bar),
-                  var2bar = gsub(pattern      = " GoM", 
-                                 replacement  = " GOM", 
-                                 x            = var2bar),
-                  var2bar = gsub(pattern      = " by EPU", 
-                                 replacement  = "", 
+                  #               x            = var2bar),
+                  # var2bar = gsub(pattern      = "Atl.", 
+                  #                replacement  = "ATLANTIC", 
+                  #                x            = var2bar),
+                  # var2bar = gsub(pattern      = "Atl", 
+                  #                replacement  = "ATLANTIC", 
+                  #                x            = var2bar),
+                  # var2bar = gsub(pattern      = "NS and combined", 
+                  #                replacement  = "", 
+                  #                x            = var2bar),
+                  # var2bar = gsub(pattern      = "YT", 
+                  #                replacement  = "Yellowtail", 
+                  #                x            = var2bar),
+                  # var2bar = gsub(pattern      = " GoM", 
+                  #                replacement  = " GOM", 
+                  #                x            = var2bar),
+                  # var2bar = gsub(pattern      = " by EPU", 
+                  #                replacement  = "", 
                                  x            = var2bar))
 }
   if (aggregate){
@@ -775,8 +775,7 @@ ggiraph(code = print(allstocks), pointsize = 14, width_svg = 8, height_svg = 6)
 
 ```{r}
 bar_dat <- dat_spec_rec_SS %>%
-  filter(Var %in% c("Atlantic herring - Northwestern Atlantic Coast",
-                    "Atlantic mackerel - Gulf of Maine / Cape Hatteras",
+  filter(Var %in% c("Atlantic mackerel - Gulf of Maine / Cape Hatteras",
                     "Tilefish - Mid-Atlantic Coast" ,
                     "Yellowtail flounder - Southern New England / Mid-Atlantic",
                     "Winter flounder - Southern New England / Mid-Atlantic" ,
@@ -806,6 +805,17 @@ ggiraph(code = print(midstocks), pointsize = 14, width_svg = 8, height_svg = 6)
 
 ```
 
+For Mid-Atlantic stocks plot I am including:  
+
+*  "Atlantic mackerel - Gulf of Maine / Cape Hatteras"
+*  "Tilefish - Mid-Atlantic Coast" 
+*  "Yellowtail flounder - Southern New England / Mid-Atlantic"
+*  "Winter flounder - Southern New England / Mid-Atlantic" 
+*  "Summer flounder - Mid-Atlantic Coast" 
+*  "Scup - Atlantic Coast"
+*  "Bluefish - Atlantic Coast"
+*  "Black sea bass - Mid-Atlantic Coast"
+*  "Butterfish - Gulf of Maine / Cape Hatteras"
 
 Below the static plot code, still needs work
 
@@ -882,8 +892,7 @@ ggiraph(code = print(allstocks), pointsize = 14, width_svg = 8, height_svg = 6)
 ```{r}
 
 bar_dat <- dat_spec_reconly_SS %>%
-  filter(Var %in% c("Atlantic herring - Northwestern Atlantic Coast",
-                    "Atlantic mackerel - Gulf of Maine / Cape Hatteras",
+  filter(Var %in% c("Atlantic mackerel - Gulf of Maine / Cape Hatteras",
                     "Tilefish - Mid-Atlantic Coast" ,
                     "Yellowtail flounder - Southern New England / Mid-Atlantic",
                     "Winter flounder - Southern New England / Mid-Atlantic" ,
@@ -953,8 +962,7 @@ ggiraph(code = print(allstocks), pointsize = 14, width_svg = 8, height_svg = 6)
 ```{r}
 
 bar_dat <- dat_spec_ssbonly_SS %>%
-  filter(Var %in% c("Atlantic herring - Northwestern Atlantic Coast",
-                    "Atlantic mackerel - Gulf of Maine / Cape Hatteras",
+  filter(Var %in% c("Atlantic mackerel - Gulf of Maine / Cape Hatteras",
                     "Tilefish - Mid-Atlantic Coast" ,
                     "Yellowtail flounder - Southern New England / Mid-Atlantic",
                     "Winter flounder - Southern New England / Mid-Atlantic" ,
