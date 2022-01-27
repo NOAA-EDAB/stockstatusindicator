@@ -178,7 +178,7 @@ calc_z <- function(x, ...) {
 
 This is `trawlr::calc_rec()` full code.
 
-```{r}
+```{r, eval=FALSE}
 #' Calculate spawner-recruit anomalies
 #'
 #' Calculates a time series of spawner-recruit anomalies
@@ -462,8 +462,131 @@ This is the bit I've pulled out to use with the stock assessment recruitment and
 
 SSrecbio <- NErecNstd %>%
   select(StockName, SSByr, NfishRec) %>%
-  left_join(NEbioBstd, by = c("SSByr", "Year")) %>%
-  select(StockName, Year, SSByr, NfishRec, SSBkg)
+  left_join(NEbioBstd, by = c("StockName" = "StockName",
+                              "SSByr"="Year")) %>%
+  select(StockName, SSByr, NfishRec, SSBkg)
+
+min_year <- 1980
+max_year <- 2020
+
+dat_spec_rec <- SSrecbio %>%
+  group_by(StockName) %>%
+  dplyr::mutate(#recruits_biom_lead1 = dplyr::lead(recruits_biom,
+                #                                    n = 1),
+                  recruits_abund_lead1 = NfishRec, #dplyr::lead(recruits_abund,
+                                                  #   n = 1),
+                  spawners_biom = SSBkg,
+                  YEAR = SSByr,
+                  rs         = recruits_abund_lead1/
+                               spawners_biom,
+                  #rs_abund   = recruits_abund_lead1/
+                  #              spawners_abund,
+                  #rs_biom    = recruits_biom_lead1/
+                  #              spawners_biom,
+                  logr_abund = log(recruits_abund_lead1),
+                  #logr_biom  = log(recruits_biom_lead1),
+                  #logs_abund = log(spawners_abund),
+                  logs_biom  = log(spawners_biom),
+                  logrs      = log(rs),
+                  #logrs_abund = log(rs_abund),
+                  #logrs_biom  = log(rs_biom),
+                  #spawners_abund_lag0_anom =
+                  #  ''calc_z(spawners_abund,
+                  #                 na.rm = T),
+                  spawners_biom_lag0_anom =
+                    calc_z(spawners_biom,
+                                   na.rm = T),
+                  recruits_abund_lead1_anom =
+                    calc_z(recruits_abund_lead1,
+                                   na.rm = T),
+                  #recruits_biom_lead1_anom =
+                  #  calc_z(recruits_biom_lead1,
+                  #                 na.rm = T),
+                  rs_anom       = calc_z(rs,
+                                                na.rm = T),
+                  #rs_abund_anom = calc_z(rs_abund,
+                  #                               na.rm = T),
+                  #rs_biom_anom = calc_z(rs_biom,
+                  #                              na.rm = T),
+                  logr_abund_anom =
+                    calc_z(logr_abund),
+                  #logr_biom_anom =
+                  #  calc_z(logr_biom),
+                  #logs_abund_anom =
+                  #  calc_z(logs_abund, na.rm = T),
+                  logs_biom_anom =
+                    calc_z(logs_biom, na.rm = T),
+                  logrs_anom =
+                    calc_z(logrs, na.rm = T),
+                  #logrs_abund_anom =
+                  #  calc_z(logrs_abund, na.rm = T),
+                  #logrs_biom_anom =
+                  #  calc_z(logrs_biom, na.rm = T),
+                  #spawner_wl_anom  =
+                  #  calc_z(spawner_wl),
+                  #recruit_wl_lead1 = dplyr::lead(recruit_wl, n = 1),
+                  #recruit_wl_lead1_anom =
+                  #  calc_z(recruit_wl_lead1),
+                  #spawner_wl_res_anom =
+                  #  calc_z(spawner_wl_res),
+                  #recruit_wl_res_lead1 = dplyr::lag(recruit_wl_res, n = 1),
+                  #recruit_wl_res_lead1_anom =
+                  #  calc_z(recruit_wl_res_lead1)
+                  ) %>%
+    # Remove year before minimum and year after maximum
+    dplyr::filter(YEAR >= min_year,
+                  YEAR <= max_year) %>%
+    #Average seasonal anomalies to get yearly anomaly
+    dplyr::group_by(., YEAR, StockName) %>% #SCINAME, COMNAME) %>%
+    # { if (by_epu) dplyr::group_by(., EPU, add = T) else . } %>%
+    # { if (by_taxon) dplyr::group_by(., order, add = T) else . } %>%
+    # { if (by_season) dplyr::group_by(., SEASON, add = T) else . } %>%
+    dplyr::summarise(
+      # spawners_abund_lag0 = mean(spawners_abund,
+      #                            na.rm = T),
+      # spawners_abund_lag0_anom = mean(spawners_abund_lag0_anom,
+      #                                 na.rm = T),
+      spawners_biom_lag0 = mean(spawners_biom, na.rm = T),
+      spawners_biom_lag0_anom = mean(spawners_biom_lag0_anom,
+                                     na.rm = T),
+      #recruits_abund    = mean(recruits_abund, na.rm = T),
+      recruits_abund_lead1      = mean(recruits_abund_lead1,
+                                        na.rm = T),
+      recruits_abund_lead1_anom = mean(recruits_abund_lead1_anom,
+                                        na.rm = T),
+      # recruits_biom_lead1      = mean(recruits_biom_lead1,
+      #                                  na.rm = T),
+      # recruits_biom_lead1_anom  = mean(recruits_biom_lead1_anom,
+      #                                   na.rm = T),
+      rs                 = mean(rs, na.rm = T),
+      # rs_abund           = mean(rs_abund, na.rm = T),
+      # rs_biom            = mean(rs_biom, na.rm = T),
+      rs_anom            = mean(rs_anom, na.rm = T),
+      # rs_abund_anom      = mean(rs_abund_anom, na.rm = T),
+      # rs_biom_anom       = mean(rs_biom_anom, na.rm = T),
+      logr_abund_anom    = mean(logr_abund_anom,
+                                na.rm = T),
+      # logr_biom_anom     = mean(logr_biom_anom,
+      #                           na.rm = T),
+      # logs_abund_anom    = mean(logs_abund_anom,
+      #                           na.rm = T),
+      logs_biom_anom     = mean(logs_biom_anom,
+                                na.rm = T),
+      logrs_anom         = mean(logrs_anom, na.rm = T),
+      # logrs_abund_anom    = mean(logrs_abund_anom,
+      #                            na.rm = T),
+      # logrs_biom_anom     = mean(logrs_biom_anom,
+      #                            na.rm = T),
+      # spawner_wl_anom     = mean(spawner_wl_anom,
+      #                            na.rm = T),
+      # recruit_wl_lead1_anom = mean(recruit_wl_lead1_anom,
+      #                            na.rm = T),
+      # spawner_wl_res_anom = mean(spawner_wl_res_anom,
+      #                            na.rm = T),
+      # recruit_wl_res_lead1_anom = mean(recruit_wl_res_lead1_anom,
+      #                                  na.rm = T)
+      )
+
 ```
 
 
