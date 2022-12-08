@@ -400,7 +400,7 @@ Checked the boxes: Year--2022
 
 Species with 2022 updates: 
 
-American plaice, Atlantic bluefish, Atlantic halibut, Atlantic herring, Atlantic wolffish, Butterfish, Haddock (3 stocks), Monkfish (2 stocks), Ocean Pout, Pollock, Shortfin squid, Spiny dogfish, White hake, Winter flounder (3 stocks), Witch flounder, and Yellowtail flounder (2 stocks)
+American plaice, Atlantic bluefish, Atlantic halibut, Atlantic herring, Atlantic wolffish, Butterfish, Haddock (2 stocks), Monkfish (2 stocks), Ocean Pout, Pollock, Shortfin squid, Spiny dogfish, White hake, Winter flounder (3 stocks), Witch flounder, and Yellowtail flounder (2 stocks)
 
 As of 6 December 2022, none of these appear in StockSMART. Team StockSMART was contacted to see if they have the data and it is just not posted, or if it has not been submitted. 
 
@@ -441,181 +441,202 @@ Add rows updating key columns for individual species in code instead of spreadsh
 ```{r update}
 
 # American plaice, American_plaice_Update_2022_10_12_091606.pdf
-Aplaice <- as.data.frame(Entity.Name = "`American plaice - Gulf of Maine / Georges Bank`",
-                         Assessment.Year = 2022,
-                         `Estimated F` = 0.045,
-                         Fmsy = 0.41,
-                         `Estimated B` = 18809,
-                         Bmsy = 19051)
+Aplaice <- data.frame(Entity.Name = "`American plaice - Gulf of Maine / Georges Bank`",
+                      Assessment.Year = 2022,
+                      `Estimated F` = 0.045,
+                      Fmsy = 0.41,
+                      `Estimated B` = 18809,
+                      Bmsy = 19051)
 
 #Atlantic bluefish, Bluefish_SAW_SARC_2022_FINAL.pdf
-bluefish <- as.data.frame(Entity.Name = "`Bluefish - Atlantic Coast`",
-                          Assessment.Year = 2022,
-                          `Estimated F` = 0.166,
-                          Fmsy = 0.248,
-                          `Estimated B` = 55344,
-                          Bmsy = 91987)
+bluefish <- data.frame(Entity.Name = "`Bluefish - Atlantic Coast`",
+                       Assessment.Year = 2022, #RT results
+                       `Estimated F` = 0.166,
+                       Fmsy = 0.248,
+                       `Estimated B` = 55344,
+                       Bmsy = 91987)
 
 #Atlantic halibut, Atlantic_halibut_Update_2022_09_02_094235.pdf
-Ahalibut <- as.data.frame(Entity.Name = "`Atlantic halibut - Northwestern Atlantic Coast`",
-                          Assessment.Year = 2022,
-                          `Estimated F` = NA,
-                          Fmsy = NA,
-                          `Estimated B` = NA,
-                          Bmsy = NA)
+Ahalibut <- data.frame(Entity.Name = "`Atlantic halibut - Northwestern Atlantic Coast`",
+                       Assessment.Year = 2022,
+                       `Estimated F` = NA,
+                       Fmsy = NA,
+                       `Estimated B` = NA,
+                       Bmsy = NA)
 
 #Atlantic herring, Atlantic_Herring_Unit_Report_23May2022.pdf
-Aherring <- as.data.frame(Entity.Name = "`Atlantic herring - Northwestern Atlantic Coast`",
-                          Assessment.Year = 2022,
-                          `Estimated F` = 0.153, #retro adjusted from text not table
-                          Fmsy = 0.5,
-                          `Estimated B` = 39091, #retro adjusted from text not table
-                          Bmsy = 185750)
+Aherring <- data.frame(Entity.Name = "`Atlantic herring - Northwestern Atlantic Coast`",
+                       Assessment.Year = 2022,
+                       `Estimated F` = 0.153, #retro adjusted from text not table
+                       Fmsy = 0.5,
+                       `Estimated B` = 39091, #retro adjusted from text not table
+                       Bmsy = 185750)
 
 #Atlantic wolffish, 2022_CAT_UNIT_RPT.pdf
-Awolf<- as.data.frame(Entity.Name = "`Atlantic wolffish - Gulf of Maine / Georges Bank`",
-                      Assessment.Year = 2022,
-                      `Estimated F` = 0.004,
-                      Fmsy = 0.192,
-                      `Estimated B` = 690,
-                      Bmsy = 1509)
+Awolf<- data.frame(Entity.Name = "`Atlantic wolffish - Gulf of Maine / Georges Bank`",
+                   Assessment.Year = 2022,
+                   `Estimated F` = 0.004,
+                   Fmsy = 0.192,
+                   `Estimated B` = 690,
+                   Bmsy = 1509)
 
 #Butterfish, 2022_BUT_UNIT_RPT.pdf
 butter <- data.frame(Entity.Name = "`Butterfish - Gulf of Maine / Cape Hatteras`",
-                        Assessment.Year = 2022,
-                        `Estimated F` = 0.191,
-                        Fmsy = 5.60,
-                        `Estimated B` = 66566,
-                        Bmsy = 39436)
+                     Assessment.Year = 2022,
+                     `Estimated F` = 0.191,
+                     Fmsy = 5.60,
+                     `Estimated B` = 66566,
+                     Bmsy = 39436)
 
-#Haddock (3 stocks), 
-haddock1 <- as.data.frame(Entity.Name = "`Haddock - Eastern Georges Bank`",
-                          Assessment.Year = 2022,
-                          `Estimated F` = ,
-                          Fmsy = ,
-                          `Estimated B` = ,
-                          Bmsy = )
-
+#Haddock (2 stocks), 
 # Haddock Georges_Bank_haddock_Update_2022_10_12_124337.pdf
-haddock2 <- as.data.frame(Entity.Name = "`Haddock - Georges Bank`",
-                          Assessment.Year = 2022,
-                          `Estimated F` = 0.137,
-                          Fmsy = 0.25,
-                          `Estimated B` = 79513,
-                          Bmsy = 120580)
+haddock2 <- data.frame(Entity.Name = "`Haddock - Georges Bank`",
+                       Assessment.Year = 2022,
+                       `Estimated F` = 0.137,
+                       Fmsy = 0.25,
+                       `Estimated B` = 79513,
+                       Bmsy = 120580)
 
 # Haddock Gulf_of_Maine_haddock_Update_2022_v3.pdf
-haddock3 <- as.data.frame(Entity.Name = "`Haddock - Gulf of Maine`",
-                          Assessment.Year = 2022,
-                          `Estimated F` = 0.375,
-                          Fmsy = 0.338,
-                          `Estimated B` = 16528,
-                          Bmsy = 6123)
+haddock3 <- data.frame(Entity.Name = "`Haddock - Gulf of Maine`",
+                       Assessment.Year = 2022,
+                       `Estimated F` = 0.375,
+                       Fmsy = 0.338,
+                       `Estimated B` = 16528,
+                       Bmsy = 6123)
 
 #Monkfish (2 stocks), DraftMonkfishReport15August2022b.pdf
-monk1 <- as.data.frame(Entity.Name = "`Goosefish - Gulf of Maine / Northern Georges Bank`",
-                       Assessment.Year = 2022,
-                       `Estimated F` = NA,
-                       Fmsy = NA,
-                       `Estimated B` = NA,
-                       Bmsy = NA)
+monk1 <- data.frame(Entity.Name = "`Goosefish - Gulf of Maine / Northern Georges Bank`",
+                    Assessment.Year = 2022,
+                    `Estimated F` = NA,
+                    Fmsy = NA,
+                    `Estimated B` = NA,
+                    Bmsy = NA)
 
-monk2 <- as.data.frame(Entity.Name = "`Goosefish - Southern Georges Bank / Mid-Atlantic`",
-                       Assessment.Year = 2022,
-                       `Estimated F` = NA,
-                       Fmsy = NA,
-                       `Estimated B` = NA,
-                       Bmsy = NA)
+monk2 <- data.frame(Entity.Name = "`Goosefish - Southern Georges Bank / Mid-Atlantic`",
+                    Assessment.Year = 2022,
+                    `Estimated F` = NA,
+                    Fmsy = NA,
+                    `Estimated B` = NA,
+                    Bmsy = NA)
 
 #Ocean Pout, 2022_OPT_UNIT_RPT.pdf
-opout <- as.data.frame(Entity.Name = "`Ocean pout - Northwestern Atlantic Coast`",
-                       Assessment.Year = 2022,
-                       `Estimated F` = 0.234,
-                       Fmsy = 0.76,
-                       `Estimated B` = 0.263,
-                       Bmsy = 4.94)
+opout <- data.frame(Entity.Name = "`Ocean pout - Northwestern Atlantic Coast`",
+                    Assessment.Year = 2022,
+                    `Estimated F` = 0.234,
+                    Fmsy = 0.76,
+                    `Estimated B` = 0.263,
+                    Bmsy = 4.94)
 
 #Pollock, 2022_POK_UNIT_RPT_Update_2022_10_11_163300.pdf
-pollock <- as.data.frame(Entity.Name = "`Pollock - Gulf of Maine / Georges Bank`",
-                         Assessment.Year = 2022,
-                         `Estimated F` = 0.052, #base model
-                         Fmsy = 0.235, #base model
-                         `Estimated B` = 175573, #base model
-                         Bmsy = 92130) #base model
+pollock <- data.frame(Entity.Name = "`Pollock - Gulf of Maine / Georges Bank`",
+                      Assessment.Year = 2022,
+                      `Estimated F` = 0.052, #base model
+                      Fmsy = 0.235, #base model
+                      `Estimated B` = 175573, #base model
+                      Bmsy = 92130) #base model
 
-#Shortfin squid, 
-illex <- as.data.frame(Entity.Name = "`Northern shortfin squid - Northwestern Atlantic Coast`",
-                       Assessment.Year = 2022,
-                       `Estimated F` = ,
-                       Fmsy = ,
-                       `Estimated B` = ,
-                       Bmsy = )
+#Shortfin squid, northern_shortfin_squid_Update_2022_09_13_151413.pdf
+illex <- data.frame(Entity.Name = "`Northern shortfin squid - Northwestern Atlantic Coast`",
+                    Assessment.Year = 2022,
+                    `Estimated F` = NA,
+                    Fmsy = NA,
+                    `Estimated B` = NA,
+                    Bmsy = NA)
 
-#Spiny dogfish, 
-dogfish <- as.data.frame(Entity.Name = "`Spiny dogfish - Atlantic Coast`",
-                         Assessment.Year = 2022,
-                         `Estimated F` = ,
-                         Fmsy = ,
-                         `Estimated B` = ,
-                         Bmsy = )
+#Spiny dogfish, Spiny_Dogfish_SAW_SARC_2022_FINAL.pdf
+dogfish <- data.frame(Entity.Name = "`Spiny dogfish - Atlantic Coast`",
+                      Assessment.Year = 2022, #RT results
+                      `Estimated F` = 0.032, #2019 table 4.4 
+                      Fmsy = 0.025, #SPR60%
+                      `Estimated B` = 239877, #2019 table 4.4 
+                      Bmsy = 370799) #SPR60% thousand pups
 
-#White hake, 
-whake <- as.data.frame(Entity.Name = "`White hake - Gulf of Maine / Georges Bank`",
-                       Assessment.Year = 2022,
-                       `Estimated F` = ,
-                       Fmsy = ,
-                       `Estimated B` = ,
-                       Bmsy = )
+#White hake, 2022_HKW_UNIT_REPORT_REV.pdf
+whake <- data.frame(Entity.Name = "`White hake - Gulf of Maine / Georges Bank`",
+                    Assessment.Year = 2022,
+                    `Estimated F` = 0.104, #retro adjusted from text not table
+                    Fmsy = 0.1605,
+                    `Estimated B` = 19497, #retro adjusted from text not table
+                    Bmsy = 28191)
 
 #Winter flounder (3 stocks), 
-wflounder1 <- as.data.frame(Entity.Name = "`Winter flounder - Georges Bank`",
-                            Assessment.Year = 2022,
-                            `Estimated F` = ,
-                            Fmsy = ,
-                            `Estimated B` = ,
-                            Bmsy = )
+# Winter flounder Georges_Bank_Winter_Flounder_Update_2022_09_20_revised.pdf
+wflounder1 <- data.frame(Entity.Name = "`Winter flounder - Georges Bank`",
+                         Assessment.Year = 2022,
+                         `Estimated F` = 0.076, #retro adjusted
+                         Fmsy = 0.452,
+                         `Estimated B` = 4503, #retro adjusted
+                         Bmsy = 7503)
+# Winter flounder 2022_FLW_GM_RPT_Report_2022_09_01_124900.pdf
+wflounder2 <- data.frame(Entity.Name = "`Winter flounder - Gulf of Maine`",
+                         Assessment.Year = 2022,
+                         `Estimated F` = 0.033,
+                         Fmsy = 0.23,
+                         `Estimated B` = 5093,
+                         Bmsy = NA)
+# Winter flounder 2022_FLW_SNEMA_RPT.pdf
+wflounder3 <- data.frame(Entity.Name = "`Winter flounder - Southern New England / Mid-Atlantic`",
+                         Assessment.Year = 2022,
+                         `Estimated F` = 0.061,
+                         Fmsy = 0.265,
+                         `Estimated B` = 3353.2,
+                         Bmsy = 3314)
 
-wflounder2 <- as.data.frame(Entity.Name = "`Winter flounder - Gulf of Maine`",
-                            Assessment.Year = 2022,
-                            `Estimated F` = ,
-                            Fmsy = ,
-                            `Estimated B` = ,
-                            Bmsy = )
-
-wflounder3 <- as.data.frame(Entity.Name = "`Winter flounder - Southern New England / Mid-Atlantic`",
-                            Assessment.Year = 2022,
-                            `Estimated F` = ,
-                            Fmsy = ,
-                            `Estimated B` = ,
-                            Bmsy = )
-
-#Witch flounder, and 
-witch <- as.data.frame(Entity.Name = "`Witch flounder - Northwestern Atlantic Coast`",
-                       Assessment.Year = 2022,
-                       `Estimated F` = ,
-                       Fmsy = ,
-                       `Estimated B` = ,
-                       Bmsy = )
+#Witch flounder, 2022_WIT_UNIT_RPT_10_12_145249.pdf 
+witch <- data.frame(Entity.Name = "`Witch flounder - Northwestern Atlantic Coast`",
+                    Assessment.Year = 2022,
+                    `Estimated F` = 0.039,
+                    Fmsy = NA,
+                    `Estimated B` = 22419,
+                    Bmsy = NA)
 
 #Yellowtail flounder (2 stocks)
-yelltail1 <- as.data.frame(Entity.Name = "`Yellowtail flounder - Cape Cod / Gulf of Maine`",
-                           Assessment.Year = 2022,
-                           `Estimated F` = ,
-                           Fmsy = ,
-                           `Estimated B` = ,
-                           Bmsy = )
+# Yell CCGOM 2022_YEL_CCGOM_RPT_Report_2022_11_02_134310.pdf
+yelltail1 <- data.frame(Entity.Name = "`Yellowtail flounder - Cape Cod / Gulf of Maine`",
+                        Assessment.Year = 2022,
+                        `Estimated F` = 0.1035, #retro adjusted
+                        Fmsy = 0.3204,
+                        `Estimated B` = 3058, #retro adjusted
+                        Bmsy = 3068)
 
-yelltail2 <- as.data.frame(Entity.Name = "`Yellowtail flounder - Southern New England / Mid-Atlantic`",
-                           Assessment.Year = 2022,
-                           `Estimated F` = ,
-                           Fmsy = ,
-                           `Estimated B` = ,
-                           Bmsy = )
+# Yell SNEMA 2022_YEL_SNEMA_RPT_Report_2022_09_11_152630.pdf
+yelltail2 <- data.frame(Entity.Name = "`Yellowtail flounder - Southern New England / Mid-Atlantic`",
+                        Assessment.Year = 2022,
+                        `Estimated F` = 0.082, #retro adjusted
+                        Fmsy = 0.349,
+                        `Estimated B` = 70, #retro adjusted
+                        Bmsy = 1715)
 
 ```
 
 Bind rows, calculate F.Fmsy and B.Bmsy from inputs, add to assess
 ```{r bind-combine}
 
+update <- dplyr::bind_rows(Ahalibut, 
+                           Aherring, 
+                           Aplaice, 
+                           Awolf, 
+                           bluefish, 
+                           butter, 
+                           dogfish, 
+                           haddock2, 
+                           haddock3, 
+                           illex, 
+                           monk1, 
+                           monk2,
+                           opout, 
+                           pollock, 
+                           wflounder1, 
+                           wflounder2, 
+                           wflounder3, 
+                           whake, 
+                           witch, 
+                           yelltail1, 
+                           yelltail2) %>%
+  dplyr::mutate(F.Fmsy = Estimated.F/Fmsy,
+                B.Bmsy = Estimated.B/Bmsy)
+
+assessupdate <- dplyr::bind_rows(assess, update)
 ```
 
