@@ -1,0 +1,1000 @@
+---
+title: "Multispecies Recruitment"
+author: "Sarah Gaichas"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_fold: hide
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+
+remotes::install_github("https://github.com/NOAA-EDAB/stocksmart")
+
+library(here)
+library(tidyverse)
+library(DT)
+library(stocksmart)
+library(ggrepel)
+library(ecodata)
+library(ggiraph)
+
+```
+
+## Evaluate change in recruitment over time for assessed species
+
+### Get stocksmart info
+
+As of Dec 9 when this was run, only Atlantic herring, Butterfish, Illex, and SNEMA Winter flounder assessments have 2022 assessment results in stockSMART. Further, the Butterfish 2022 results may be from the research track assessment, rather than the management track assessment, as noted [here](https://sgaichas.github.io/stockstatusindicator/StockStatus2022.html). 
+
+That means assessment updates for many NEFSC species in 2022 are not yet included here, but the labor of going through individual assessments for time series is too error prone, so these will just have to wait until stockSMART is updated: 
+
+American plaice, Atlantic bluefish, Atlantic halibut, Atlantic wolffish, Butterfish (MT assessment), Haddock (2 stocks), Monkfish (2 stocks), Ocean Pout, Pollock, Spiny dogfish, White hake, Winter flounder (2 stocks), Witch flounder, and Yellowtail flounder (2 stocks)
+
+Can we pull most recent recruitment and SSB or other B outputs from Northeast US stock assessments? Which species do we have? What units are recruitments in?
+
+```{r}
+NErec <- stocksmart::stockAssessmentData %>%
+  filter(RegionalEcosystem == "Northeast Shelf",
+         Metric == "Recruitment") %>%
+  group_by(StockName) %>%
+  filter(AssessmentYear == max(AssessmentYear)) %>%
+  ungroup() 
+
+sppunits <- NErec %>%
+  select(StockName, StockArea, Description, Units) %>%
+  distinct()
+
+datatable(sppunits, rownames = FALSE,
+             options = list(scrollX = TRUE,
+                            pageLength = 10))
+
+```
+
+Lets check the units for biomass too.
+
+```{r}
+NEbio <- stocksmart::stockAssessmentData %>%
+  filter(RegionalEcosystem == "Northeast Shelf",
+         Metric == "Abundance") %>%
+  group_by(StockName) %>%
+  filter(AssessmentYear == max(AssessmentYear)) %>%
+  ungroup() 
+
+sppunits <- NEbio %>%
+  select(StockName, StockArea, Description, Units) %>%
+  distinct()
+
+datatable(sppunits, rownames = FALSE,
+             options = list(scrollX = TRUE,
+                            pageLength = 10))
+```
+
+Select down to stocks used in SOE productivity anomaly indicator? Won't split them by EPU but could map some stocks to different regions kinda. Or just pick MA managed stocks in stocksmart? Here just trying to get a list of stocks that have both recruitment and biomass in stocksmart. Weeding out recruitment measures that are not in numbers for now.
+
+Also, lets not use assessments prior to 2019.
+
+```{r}
+
+# first pass only stocks with both rec in N and bio but keep all years of bio
+
+NErecN <- NErec %>%
+  filter(AssessmentYear>2018,
+         Units %in% c("Thousand Recruits",
+                      "Number x 1,000,000",
+                      "Number x 1,000",
+                      "Million Recruits")) 
+
+NErecstocks <- NErecN %>%
+  select(StockName) %>%
+  distinct()
+
+NEbiohasrec <- NEbio %>%
+  filter(StockName %in% NErecstocks$StockName)
+
+
+```
+
+Next steps: 
+
+Reconcile the units so inputs are the same across stocks
+
+Units of recruitment in numbers of fish at age 1 is the input to the survey based productivity anomaly indicator. We'll need to convert all to numbers and note the age of recruitment for each stock to shift recruitment appropriately. 
+
+```{r}
+
+NErecNstd <- NErecN %>%
+  mutate(NfishRec = case_when(Units == "Thousand Recruits" ~ Value*1000,
+                              Units == "Number x 1,000,000" ~ Value*1000000,
+                              Units == "Number x 1,000" ~ Value*1000,
+                              Units == "Million Recruits" ~ Value*1000000,
+                              TRUE ~ as.numeric(NA)),
+         AgeRec = as.numeric(stringr::str_extract(Description, "(\\d)+")),
+         SSByr = Year-AgeRec
+         )
+
+```
+
+Plot each Rec series by SSByr
+```{r, fig.height=14, fig.width=9}
+ggplot(NErecNstd, aes(x=SSByr, y=NfishRec)) +
+  geom_line() +
+  theme_bw() +
+  facet_wrap(~StockName, ncol = 3, scales = "free",
+             labeller = labeller(StockName = label_wrap_gen(35)))
+
+```
+
+
+Units of biomass (all listed as mature/spawning stock or retro adjusted spawning stock) are converted to kg for similarity with survey anomaly code.
+```{r}
+NEbioBstd <- NEbiohasrec %>%
+  mutate(SSBkg = case_when(Units == "Thousand Metric Tons" ~ Value*1000000,
+                              Units == "Metric Tons" ~ Value*1000,
+                              TRUE ~ as.numeric(NA))
+         #AgeRec = as.numeric(stringr::str_extract(Description, "(\\d)+")),
+         #SSByr = Year-AgeRec
+         )
+```
+
+Plot each SSB series by Year
+```{r, fig.height=14, fig.width=9}
+ggplot(NEbioBstd, aes(x=Year, y=SSBkg)) +
+  geom_line() +
+  theme_bw() +
+  facet_wrap(~StockName, ncol = 3, scales = "free",
+             labeller = labeller(StockName = label_wrap_gen(35)))
+
+```
+
+
+### Do the Perretti anomaly calculation
+
+For the survey data, this is in `trawlr` package `func-data.R`, function `calc_rec()` starting line 798. 
+
+Current SOE indicator using `rs_anom` output of this as input for plotting so need to calculate equivalent of that one.
+
+Modify code to take `stocksmart` inputs converted to common units. Because the survey anomalies are calculated in numbers of small fish per kg mature biomass we will convert assessments to those same units.
+
+This is `trawlr::calc_z` used in `calc_rec()`
+
+```{r}
+# ---------------------------------------------------------
+#' Calculate z-score of vector
+#'
+#'
+#' @param x vector of which to calculate z-score
+#'
+#' @param ... other params that can be fed to mean() or sd()
+#'
+#' @return vector of z-score values of x
+#'
+#' @examples
+#'
+#' x_zscore <- calc_z(x = c(1:10), na.rm = T)
+#'
+#' @export
+
+calc_z <- function(x, ...) {
+  (x - mean(x, ...))/sd(x, ...)
+}
+```
+
+This is `trawlr::calc_rec()` full code.
+
+```{r, eval=FALSE}
+#' Calculate spawner-recruit anomalies
+#'
+#' Calculates a time series of spawner-recruit anomalies
+#' (and other anomalies) for all species in survdat. Survdat
+#' must have biological and epu data, so \emph{load_survdat()}
+#' must have been called with \emph(with_bio_epu) = TRUE.
+#'
+#' @param survdat dataframe; from \emph{load_survdat()}
+#'                called with \emph{with_bio_epu} = TRUE.
+#'
+#' @param min_year numeric value; minimum year to include
+#'                 in the recruitment calculations.
+#'
+#' @param max_year numeric value; maximum year to include
+#'                 in the recruitment calculations.
+#'
+#' @param by_epu logical; if TRUE recruitment variables are
+#'               calculated per ecological production unit
+#'               (EPU).
+#'
+#' @param by_taxon logical; if TRUE recruitment variables are
+#'                 calculated per ecological production unit
+#'                 (EPU).
+#'
+#'
+#' @return dataframe with recruitment related variables.
+#'
+#' @examples
+#' calc_rec(survdat = survdat,
+#'          min_year = 1980, max_year = 2008,
+#'          by_epu = TRUE, by_taxon = FALSE)
+#'
+#' @export
+calc_rec <- function(survdat,
+                     min_year,
+                     max_year,
+                     by_epu,
+                     by_taxon,
+                     by_season = FALSE,
+                     len_cutoff = 0.2) {
+
+  # Calculate the mean length at age-1 for species
+  # with age data
+  df_len_at_age1 <-
+    survdat %>%
+    dplyr::filter(YEAR >= (min_year - 1),
+                  YEAR <= (max_year + 1),
+                  !is.na(AGE),
+                  !is.na(LENGTH)) %>%
+    dplyr::group_by(COMNAME, SCINAME) %>%
+    dplyr::do(fit_length_at_age1(AGE = .$AGE,
+                                 LENGTH = .$LENGTH))
+
+
+
+  # Calculate the number of tows in each survey season
+  dat_tows <-
+    survdat %>%
+    dplyr::distinct(CRUISE6, YEAR, SEASON, STATION, STRATUM) %>%
+    dplyr::select(CRUISE6, YEAR, SEASON) %>%
+    dplyr::group_by(CRUISE6, YEAR, SEASON) %>%
+    dplyr::summarise(n_tows = n())
+
+
+  dat_spec_rec <-
+    survdat %>%
+    dplyr::left_join(dat_tows) %>%
+    dplyr::left_join(df_len_at_age1) %>%
+    dplyr::group_by(COMNAME, SCINAME) %>%
+    dplyr::filter(EPU %in% c("MAB", "GB", "GOM")) %>%
+    dplyr::filter(YEAR >= (min_year - 1),
+                  YEAR <= (max_year + 1)) %>%
+    #dplyr::do(trawlr::calc_lw(dat = .)) %>%
+    dplyr::group_by(., COMNAME) %>%
+    { if (by_epu) dplyr::group_by(., EPU, add = T) else . } %>%
+    { if (by_taxon) dplyr::group_by(., order, add = T) else . } %>%
+    { if (by_season) dplyr::group_by(., SEASON, add = T) else . } %>%
+    dplyr::mutate(rank_LENGTH = dplyr::cume_dist(LENGTH),
+                  NUMLEN      = as.numeric(NUMLEN),
+                  INDWT       = as.numeric(INDWT),
+                  WTperLENGTH = INDWT / LENGTH) %>%
+    # Remove NA's
+    dplyr::filter(!is.na(rank_LENGTH)) %>%
+    # If length at age1 exists use it, else use the length
+    # cutoff
+    dplyr::mutate(maturity = ifelse(is.na(length_at_age1),
+                                    ifelse(rank_LENGTH > len_cutoff,
+                                           "spawner",
+                                           "recruit"),
+                                   ifelse(LENGTH > length_at_age1,
+                                          "spawner",
+                                          "recruit"))
+                                        ) %>%
+    dplyr::mutate(ind_sp_abund = ifelse(maturity == "spawner",
+                                        NUMLEN,
+                                        0),
+                  ind_rec_abund = ifelse(maturity == "recruit",
+                                         NUMLEN,
+                                         0),
+                  ind_sp_wl    = ifelse(maturity == "spawner",
+                                        WTperLENGTH,
+                                        NaN),
+                 ind_rec_wl    = ifelse(maturity == "recruit",
+                                        WTperLENGTH,
+                                        NaN),
+                 ind_sp_wl_res = ifelse(maturity == "spawner",
+                                        (INDWT - INDWT_ALLPRED),
+                                        NaN),
+                 ind_rec_wl_res = ifelse(maturity == "recruit",
+                                         (INDWT - INDWT_ALLPRED),
+                                         NaN)) %>%
+    { if (by_taxon == TRUE & by_epu == TRUE) {
+        dplyr::group_by(., YEAR, SEASON,
+                        SCINAME, COMNAME, EPU, order)
+      } else if (by_epu == TRUE) {
+        dplyr::group_by(., YEAR, SEASON,
+                        SCINAME, COMNAME, EPU)
+      } else {
+        dplyr::group_by(., YEAR, SEASON,
+                        SCINAME, COMNAME)
+      }
+    } %>%
+    dplyr::summarise(n_tows = unique(n_tows),
+                     spawners_abund = sum(ind_sp_abund, na.rm = T)/n_tows,
+                     spawners_biom = sum(ind_sp_abund *
+                                         INDWT_PRED, na.rm = T)/n_tows,
+                     recruits_abund = sum(ind_rec_abund, na.rm = T)/n_tows,
+                     recruits_biom = sum(ind_rec_abund *
+                                         INDWT_PRED, na.rm = T)/n_tows,
+                     spawner_wl   = mean(ind_sp_wl, na.rm = T),
+                     recruit_wl   = mean(ind_rec_wl, na.rm = T),
+                     spawner_wl_res = mean(ind_sp_wl_res,
+                                           na.rm = T),
+                     recruit_wl_res = mean(ind_rec_wl_res,
+                                           na.rm = T)) %>%
+    # Calculate log(R/S), log(R), log(S)
+    dplyr::ungroup(.) %>%
+    { if (by_taxon == TRUE & by_epu == TRUE) {
+        dplyr::arrange(., SEASON,
+                       COMNAME, SCINAME, EPU, order, YEAR) %>%
+        dplyr::group_by(., SEASON,
+                        COMNAME, SCINAME, EPU, order)
+      } else if (by_epu == TRUE) {
+        dplyr::arrange(., SEASON,
+                       COMNAME, SCINAME, EPU, YEAR) %>%
+        dplyr::group_by(., SEASON,
+                        COMNAME, SCINAME, EPU)
+      } else if (by_taxon == TRUE) {
+        dplyr::arrange(., SEASON,
+                       COMNAME, SCINAME, order, YEAR) %>%
+        dplyr::group_by(., SEASON,
+                        COMNAME, SCINAME, order)
+      } else {
+        dplyr::arrange(., SEASON,
+                       COMNAME, SCINAME, YEAR) %>%
+        dplyr::group_by(., SEASON,
+                        COMNAME, SCINAME)
+      }
+    } %>%
+    dplyr::mutate(recruits_biom_lead1 = dplyr::lead(recruits_biom,
+                                                    n = 1),
+                  recruits_abund_lead1 = dplyr::lead(recruits_abund,
+                                                     n = 1),
+                  rs         = recruits_abund_lead1/
+                               spawners_biom,
+                  rs_abund   = recruits_abund_lead1/
+                                spawners_abund,
+                  rs_biom    = recruits_biom_lead1/
+                                spawners_biom,
+                  logr_abund = log(recruits_abund_lead1),
+                  logr_biom  = log(recruits_biom_lead1),
+                  logs_abund = log(spawners_abund),
+                  logs_biom  = log(spawners_biom),
+                  logrs      = log(rs),
+                  logrs_abund = log(rs_abund),
+                  logrs_biom  = log(rs_biom),
+                  spawners_abund_lag0_anom =
+                    trawlr::calc_z(spawners_abund,
+                                   na.rm = T),
+                  spawners_biom_lag0_anom =
+                    trawlr::calc_z(spawners_biom,
+                                   na.rm = T),
+                  recruits_abund_lead1_anom =
+                    trawlr::calc_z(recruits_abund_lead1,
+                                   na.rm = T),
+                  recruits_biom_lead1_anom =
+                    trawlr::calc_z(recruits_biom_lead1,
+                                   na.rm = T),
+                  rs_anom       = trawlr::calc_z(rs,
+                                                na.rm = T),
+                  rs_abund_anom = trawlr::calc_z(rs_abund,
+                                                 na.rm = T),
+                  rs_biom_anom = trawlr::calc_z(rs_biom,
+                                                na.rm = T),
+                  logr_abund_anom =
+                    trawlr::calc_z(logr_abund),
+                  logr_biom_anom =
+                    trawlr::calc_z(logr_biom),
+                  logs_abund_anom =
+                    trawlr::calc_z(logs_abund, na.rm = T),
+                  logs_biom_anom =
+                    trawlr::calc_z(logs_biom, na.rm = T),
+                  logrs_anom =
+                    trawlr::calc_z(logrs, na.rm = T),
+                  logrs_abund_anom =
+                    trawlr::calc_z(logrs_abund, na.rm = T),
+                  logrs_biom_anom =
+                    trawlr::calc_z(logrs_biom, na.rm = T),
+                  spawner_wl_anom  =
+                    trawlr::calc_z(spawner_wl),
+                  recruit_wl_lead1 = dplyr::lead(recruit_wl, n = 1),
+                  recruit_wl_lead1_anom =
+                    trawlr::calc_z(recruit_wl_lead1),
+                  spawner_wl_res_anom =
+                    trawlr::calc_z(spawner_wl_res),
+                  recruit_wl_res_lead1 = dplyr::lag(recruit_wl_res, n = 1),
+                  recruit_wl_res_lead1_anom =
+                    trawlr::calc_z(recruit_wl_res_lead1)) %>%
+    # Remove year before minimum and year after maximum
+    dplyr::filter(YEAR >= min_year,
+                  YEAR <= max_year) %>%
+    #Average seasonal anomalies to get yearly anomaly
+    dplyr::group_by(., YEAR, SCINAME, COMNAME) %>%
+    { if (by_epu) dplyr::group_by(., EPU, add = T) else . } %>%
+    { if (by_taxon) dplyr::group_by(., order, add = T) else . } %>%
+    { if (by_season) dplyr::group_by(., SEASON, add = T) else . } %>%
+    dplyr::summarise(
+      spawners_abund_lag0 = mean(spawners_abund,
+                                 na.rm = T),
+      spawners_abund_lag0_anom = mean(spawners_abund_lag0_anom,
+                                      na.rm = T),
+      spawners_biom_lag0 = mean(spawners_biom, na.rm = T),
+      spawners_biom_lag0_anom = mean(spawners_biom_lag0_anom,
+                                     na.rm = T),
+      recruits_abund    = mean(recruits_abund, na.rm = T),
+      recruits_abund_lead1      = mean(recruits_abund_lead1,
+                                        na.rm = T),
+      recruits_abund_lead1_anom = mean(recruits_abund_lead1_anom,
+                                        na.rm = T),
+      recruits_biom_lead1      = mean(recruits_biom_lead1,
+                                       na.rm = T),
+      recruits_biom_lead1_anom  = mean(recruits_biom_lead1_anom,
+                                        na.rm = T),
+      rs                 = mean(rs, na.rm = T),
+      rs_abund           = mean(rs_abund, na.rm = T),
+      rs_biom            = mean(rs_biom, na.rm = T),
+      rs_anom            = mean(rs_anom, na.rm = T),
+      rs_abund_anom      = mean(rs_abund_anom, na.rm = T),
+      rs_biom_anom       = mean(rs_biom_anom, na.rm = T),
+      logr_abund_anom    = mean(logr_abund_anom,
+                                na.rm = T),
+      logr_biom_anom     = mean(logr_biom_anom,
+                                na.rm = T),
+      logs_abund_anom    = mean(logs_abund_anom,
+                                na.rm = T),
+      logs_biom_anom     = mean(logs_biom_anom,
+                                na.rm = T),
+      logrs_anom         = mean(logrs_anom, na.rm = T),
+      logrs_abund_anom    = mean(logrs_abund_anom,
+                                 na.rm = T),
+      logrs_biom_anom     = mean(logrs_biom_anom,
+                                 na.rm = T),
+      spawner_wl_anom     = mean(spawner_wl_anom,
+                                 na.rm = T),
+      recruit_wl_lead1_anom = mean(recruit_wl_lead1_anom,
+                                 na.rm = T),
+      spawner_wl_res_anom = mean(spawner_wl_res_anom,
+                                 na.rm = T),
+      recruit_wl_res_lead1_anom = mean(recruit_wl_res_lead1_anom,
+                                       na.rm = T))
+
+  return(dat_spec_rec)
+}
+
+```
+
+This is the bit I've pulled out to use with the stock assessment recruitment and SSB series standardized above.
+
+```{r}
+# dataset with each species std rec in SSByr and SSB 
+
+SSrecbio <- NErecNstd %>%
+  select(StockName, SSByr, NfishRec) %>%
+  left_join(NEbioBstd, by = c("StockName" = "StockName",
+                              "SSByr"="Year")) %>%
+  select(StockName, SSByr, NfishRec, SSBkg)
+
+min_year <- 1980
+max_year <- 2021
+
+dat_spec_rec <- SSrecbio %>%
+  group_by(StockName) %>%
+  dplyr::mutate(#recruits_biom_lead1 = dplyr::lead(recruits_biom,
+                #                                    n = 1),
+                  recruits_abund_lead1 = NfishRec, #dplyr::lead(recruits_abund,
+                                                  #   n = 1),
+                  spawners_biom = SSBkg,
+                  YEAR = SSByr,
+                  rs         = recruits_abund_lead1/
+                               spawners_biom,
+                  #rs_abund   = recruits_abund_lead1/
+                  #              spawners_abund,
+                  #rs_biom    = recruits_biom_lead1/
+                  #              spawners_biom,
+                  logr_abund = log(recruits_abund_lead1),
+                  #logr_biom  = log(recruits_biom_lead1),
+                  #logs_abund = log(spawners_abund),
+                  logs_biom  = log(spawners_biom),
+                  logrs      = log(rs),
+                  #logrs_abund = log(rs_abund),
+                  #logrs_biom  = log(rs_biom),
+                  #spawners_abund_lag0_anom =
+                  #  ''calc_z(spawners_abund,
+                  #                 na.rm = T),
+                  spawners_biom_lag0_anom =
+                    calc_z(spawners_biom,
+                                   na.rm = T),
+                  recruits_abund_lead1_anom =
+                    calc_z(recruits_abund_lead1,
+                                   na.rm = T),
+                  #recruits_biom_lead1_anom =
+                  #  calc_z(recruits_biom_lead1,
+                  #                 na.rm = T),
+                  rs_anom       = calc_z(rs,
+                                                na.rm = T),
+                  #rs_abund_anom = calc_z(rs_abund,
+                  #                               na.rm = T),
+                  #rs_biom_anom = calc_z(rs_biom,
+                  #                              na.rm = T),
+                  logr_abund_anom =
+                    calc_z(logr_abund),
+                  #logr_biom_anom =
+                  #  calc_z(logr_biom),
+                  #logs_abund_anom =
+                  #  calc_z(logs_abund, na.rm = T),
+                  logs_biom_anom =
+                    calc_z(logs_biom, na.rm = T),
+                  logrs_anom =
+                    calc_z(logrs, na.rm = T),
+                  #logrs_abund_anom =
+                  #  calc_z(logrs_abund, na.rm = T),
+                  #logrs_biom_anom =
+                  #  calc_z(logrs_biom, na.rm = T),
+                  #spawner_wl_anom  =
+                  #  calc_z(spawner_wl),
+                  #recruit_wl_lead1 = dplyr::lead(recruit_wl, n = 1),
+                  #recruit_wl_lead1_anom =
+                  #  calc_z(recruit_wl_lead1),
+                  #spawner_wl_res_anom =
+                  #  calc_z(spawner_wl_res),
+                  #recruit_wl_res_lead1 = dplyr::lag(recruit_wl_res, n = 1),
+                  #recruit_wl_res_lead1_anom =
+                  #  calc_z(recruit_wl_res_lead1)
+                  ) %>%
+    # Remove year before minimum and year after maximum
+    dplyr::filter(YEAR >= min_year,
+                  YEAR <= max_year) %>%
+    #Average seasonal anomalies to get yearly anomaly
+    dplyr::group_by(., YEAR, StockName) %>% #SCINAME, COMNAME) %>%
+    # { if (by_epu) dplyr::group_by(., EPU, add = T) else . } %>%
+    # { if (by_taxon) dplyr::group_by(., order, add = T) else . } %>%
+    # { if (by_season) dplyr::group_by(., SEASON, add = T) else . } %>%
+    dplyr::summarise(
+      # spawners_abund_lag0 = mean(spawners_abund,
+      #                            na.rm = T),
+      # spawners_abund_lag0_anom = mean(spawners_abund_lag0_anom,
+      #                                 na.rm = T),
+      spawners_biom_lag0 = mean(spawners_biom, na.rm = T),
+      spawners_biom_lag0_anom = mean(spawners_biom_lag0_anom,
+                                     na.rm = T),
+      #recruits_abund    = mean(recruits_abund, na.rm = T),
+      recruits_abund_lead1      = mean(recruits_abund_lead1,
+                                        na.rm = T),
+      recruits_abund_lead1_anom = mean(recruits_abund_lead1_anom,
+                                        na.rm = T),
+      # recruits_biom_lead1      = mean(recruits_biom_lead1,
+      #                                  na.rm = T),
+      # recruits_biom_lead1_anom  = mean(recruits_biom_lead1_anom,
+      #                                   na.rm = T),
+      rs                 = mean(rs, na.rm = T),
+      # rs_abund           = mean(rs_abund, na.rm = T),
+      # rs_biom            = mean(rs_biom, na.rm = T),
+      rs_anom            = mean(rs_anom, na.rm = T),
+      # rs_abund_anom      = mean(rs_abund_anom, na.rm = T),
+      # rs_biom_anom       = mean(rs_biom_anom, na.rm = T),
+      logr_abund_anom    = mean(logr_abund_anom,
+                                na.rm = T),
+      # logr_biom_anom     = mean(logr_biom_anom,
+      #                           na.rm = T),
+      # logs_abund_anom    = mean(logs_abund_anom,
+      #                           na.rm = T),
+      logs_biom_anom     = mean(logs_biom_anom,
+                                na.rm = T),
+      logrs_anom         = mean(logrs_anom, na.rm = T),
+      # logrs_abund_anom    = mean(logrs_abund_anom,
+      #                            na.rm = T),
+      # logrs_biom_anom     = mean(logrs_biom_anom,
+      #                            na.rm = T),
+      # spawner_wl_anom     = mean(spawner_wl_anom,
+      #                            na.rm = T),
+      # recruit_wl_lead1_anom = mean(recruit_wl_lead1_anom,
+      #                            na.rm = T),
+      # spawner_wl_res_anom = mean(spawner_wl_res_anom,
+      #                            na.rm = T),
+      # recruit_wl_res_lead1_anom = mean(recruit_wl_res_lead1_anom,
+      #                                  na.rm = T)
+      )
+
+saveRDS(dat_spec_rec, "AssessFishProdAnomaly.rds")
+
+```
+
+
+### Use Perretti code to make anomaly plots
+
+Sub in interactive plots from [here](https://github.com/NOAA-EDAB/ecodata/blob/master/docs/InteractiveSOE.Rmd)
+
+#### Recruits/Spawner Biomass anomaly
+
+```{r}
+
+# modify from 2-load,R
+dat_spec_rec_SS <-
+  dat_spec_rec %>%
+  ungroup %>%
+  dplyr::select(YEAR, StockName, rs_anom) %>%
+  dplyr::rename(Time = YEAR,
+                Value = rs_anom) %>%
+  dplyr::mutate(Units = "anomaly (r/s)",
+                Var  = StockName,
+                Source = "stocksmart") %>%
+  dplyr::select(-StockName)
+
+
+#### Adjust plot properties -------------------------------
+adjustAxes <- 
+  ggplot2::theme(axis.title   = element_text(size = 18),
+                 axis.text    = element_text(size = 15),
+                 plot.title   = element_text(size = 20))
+
+### Plot function with interactive bars to see which species
+#### Plot stacked bar with cpts for single var ------------
+plot_stackbarcpts_single <- function(YEAR, var2bar,
+                                     x, xlab, ylab,
+                                     titl,
+                                     file_suffix,
+                                     leg_font_size = 10,
+                                     remove_leg = FALSE,
+                                     leg_ncol = 1,
+                                     wcpts = TRUE,
+                                     wdashed = TRUE,
+                                     height = 5.5,
+                                     width = 8,
+                                     filt = TRUE,
+                                     label = label,
+                                     y.text = y.text,
+                                     aggregate = FALSE, 
+                                     intplot = FALSE) {
+  
+  dat2bar <- data.frame(YEAR, var2bar,
+                        x)
+  if (filt == TRUE){mab_species <-  list("SUMMER FLOUNDER","SCUP","BLACK SEA BASS","BLUEFISH",
+                                         "NORTHERN SHORTFIN SQUID", "LONGFIN SQUID", "ATLANTIC MACKEREL",
+                                         "BUTTERFISH","ATLANTIC SURFCLAM", "OCEAN QUAHOG", "TILEFISH",
+                                         "BLUELINE TILEFISH","SPINY DOGFISH", "GOOSEFISH")
+  dat2plot <-
+    dat2bar %>%
+    tidyr::gather(variable, value, -YEAR, -var2bar) %>%
+    dplyr::mutate(var2bar = gsub(pattern      = "_", 
+                                 replacement  = " ", 
+                                 x            = var2bar),
+                  var2bar = gsub(pattern      = "Atl.", 
+                                 replacement  = "ATLANTIC", 
+                                 x            = var2bar),
+                  var2bar = gsub(pattern      = "Atl", 
+                                 replacement  = "ATLANTIC", 
+                                 x            = var2bar),
+                  var2bar = gsub(pattern      = "NS and combined", 
+                                 replacement  = "", 
+                                 x            = var2bar),
+                  var2bar = gsub(pattern      = "YT", 
+                                 replacement  = "Yellowtail", 
+                                 x            = var2bar),
+                  var2bar = gsub(pattern      = " GoM", 
+                                 replacement  = " GOM", 
+                                 x            = var2bar),
+                  var2bar = gsub(pattern      = " by EPU", 
+                                 replacement  = "", 
+                                 x            = var2bar)) %>%
+    filter(var2bar %in% mab_species)
+} else if (filt == FALSE){
+    dat2plot <-
+    dat2bar %>%
+    tidyr::gather(variable, value, -YEAR, -var2bar) %>%
+    dplyr::mutate(var2bar = gsub(pattern      = "_", 
+                                 replacement  = " ", 
+                  #               x            = var2bar),
+                  # var2bar = gsub(pattern      = "Atl.", 
+                  #                replacement  = "ATLANTIC", 
+                  #                x            = var2bar),
+                  # var2bar = gsub(pattern      = "Atl", 
+                  #                replacement  = "ATLANTIC", 
+                  #                x            = var2bar),
+                  # var2bar = gsub(pattern      = "NS and combined", 
+                  #                replacement  = "", 
+                  #                x            = var2bar),
+                  # var2bar = gsub(pattern      = "YT", 
+                  #                replacement  = "Yellowtail", 
+                  #                x            = var2bar),
+                  # var2bar = gsub(pattern      = " GoM", 
+                  #                replacement  = " GOM", 
+                  #                x            = var2bar),
+                  # var2bar = gsub(pattern      = " by EPU", 
+                  #                replacement  = "", 
+                                 x            = var2bar))
+}
+  if (aggregate){
+   agg <- dat2plot %>%
+     group_by(YEAR) %>%
+     dplyr::summarise(Total = sum(value, na.rm = T)) %>% 
+     mutate(Total = ifelse(Total == 0, NA, Total))
+  }
+  
+  p <-   
+    ggplot(dat2plot,
+           aes(x = YEAR)) +
+    {if(intplot) geom_bar_interactive(data = dat2plot %>% filter(value > 0),
+                           aes(y = value, fill = var2bar,
+                               tooltip =  var2bar, data_id =  var2bar),
+                           stat = "identity")} +
+    {if(intplot) geom_bar_interactive(data = dat2plot %>% filter(value < 0),
+                             aes(y = value, fill = var2bar,
+                                 tooltip =  var2bar, data_id =  var2bar),
+                             stat = "identity")} +
+    {if(!intplot) geom_bar(data = dat2plot %>% filter(value > 0),
+             aes(y = value, fill = var2bar),
+             stat = "identity")} +
+    {if(!intplot) geom_bar(data = dat2plot %>% filter(value < 0),
+             aes(y = value, fill = var2bar),
+             stat = "identity")} +
+    {if(aggregate) geom_line(data = agg,aes(x = YEAR, y = Total),
+                             size = 1)} +
+    geom_hline(size = 0.3, aes(yintercept = 0)) +
+    xlab(xlab) +
+    ylab(ylab) +
+    ggtitle(titl) +
+    guides(fill = guide_legend(ncol = leg_ncol)) +
+    theme_ts()+
+    theme(axis.title   = element_text(size = 16),
+          axis.text    = element_text(size = 15),
+          plot.title   = element_text(size = 20),
+          legend.text  = element_text(size = leg_font_size),
+          legend.title = element_blank()) +
+    annotate("text", label = label, x = 1980, y = y.text,size = 8, colour = "black")
+  
+  if(remove_leg) p <- p + theme(legend.position = "none")
+  
+  return(p)
+}
+
+# bar_dat <- ecodata::productivity_anomaly %>% 
+#   filter(EPU == "MAB")
+# mafmc <-plot_stackbarcpts_single(YEAR = bar_dat$Time,
+#                          var2bar = bar_dat$Var,
+#                          x = bar_dat$Value,
+#                          titl = "",
+#                          xlab = "",
+#                          ylab = "Small fish per large fish biomass (anomaly)",
+#                          height = 5.5,
+#                          width = 9,
+#                          filt = TRUE,
+#                          label = "A",
+#                          y.text = 4.5)
+# 
+
+bar_dat <- dat_spec_rec_SS
+
+allstocks <- plot_stackbarcpts_single(YEAR = bar_dat$Time,
+                         var2bar = bar_dat$Var,
+                         x = bar_dat$Value,
+                         titl = "All stocks",
+                         xlab = "",
+                         ylab = "Recruits/Mature biomass (anomaly)",
+                         height = 5.5,
+                         width = 9,
+                         filt = FALSE,
+                         label = "",
+                         y.text = 10,
+                         aggregate = TRUE,
+                         intplot = TRUE,
+                         remove_leg = TRUE)
+#all
+ggiraph(code = print(allstocks), pointsize = 14, width_svg = 8, height_svg = 6)
+
+```
+
+```{r}
+bar_dat <- dat_spec_rec_SS %>%
+  filter(Var %in% c("Atlantic mackerel - Gulf of Maine / Cape Hatteras",
+                    "Tilefish - Mid-Atlantic Coast" ,
+                    "Yellowtail flounder - Southern New England / Mid-Atlantic",
+                    "Winter flounder - Southern New England / Mid-Atlantic" ,
+                    "Summer flounder - Mid-Atlantic Coast" ,
+                    "Scup - Atlantic Coast",
+                    "Bluefish - Atlantic Coast",
+                    "Black sea bass - Mid-Atlantic Coast",
+                    "Butterfish - Gulf of Maine / Cape Hatteras"
+  ))
+
+midstocks <- plot_stackbarcpts_single(YEAR = bar_dat$Time,
+                         var2bar = bar_dat$Var,
+                         x = bar_dat$Value,
+                         titl = "Mid-Atlantic stocks",
+                         xlab = "",
+                         ylab = "Recruits/Mature biomass (anomaly)",
+                         height = 5.5,
+                         width = 9,
+                         filt = FALSE,
+                         label = "",
+                         y.text = 10,
+                         aggregate = TRUE,
+                         intplot = TRUE,
+                         remove_leg = TRUE)
+#all
+ggiraph(code = print(midstocks), pointsize = 14, width_svg = 8, height_svg = 6)
+
+```
+
+For Mid-Atlantic stocks plot I am including:  
+
+*  "Atlantic mackerel - Gulf of Maine / Cape Hatteras"
+*  "Tilefish - Mid-Atlantic Coast" 
+*  "Yellowtail flounder - Southern New England / Mid-Atlantic"
+*  "Winter flounder - Southern New England / Mid-Atlantic" 
+*  "Summer flounder - Mid-Atlantic Coast" 
+*  "Scup - Atlantic Coast"
+*  "Bluefish - Atlantic Coast"
+*  "Black sea bass - Mid-Atlantic Coast"
+*  "Butterfish - Gulf of Maine / Cape Hatteras"
+
+Below the static plot code, still needs work
+
+```{r, eval=FALSE}
+
+# static plot, needs legend tweakes
+# plot functions
+#source('~/Documents/0_Data/ESR/SOE2022/trawlr/run_for_soe/1-func.R')
+
+# modify from 2-load,R
+# dat_spec_rec_SS <-
+#   dat_spec_rec %>%
+#   ungroup %>%
+#   dplyr::select(YEAR, StockName, rs_anom) %>%
+#   dplyr::rename(Time = YEAR,
+#                 Value = rs_anom) %>%
+#   dplyr::mutate(Units = "anomaly (r/s)",
+#                 Var  = StockName,
+#                 Source = "stocksmart") %>%
+#   dplyr::select(-StockName)
+# 
+# # modify from 4-do.R
+# ## Recruit per spawner (all stocks in one figure) --------
+# plot_stackbarcpts_single(YEAR = dat_spec_rec_SS$Time,
+#                          var2bar = dat_spec_rec_SS$Var,
+#                          x = dat_spec_rec_SS$Value,
+#                          titl = "",
+#                          xlab = "",
+#                          ylab = "Recruits/Mature biomass (anomaly)",
+#                          height = 5.5,
+#                          width = 9)
+
+
+```
+
+#### Recruits anomaly
+
+```{r}
+
+dat_spec_reconly_SS <-
+  dat_spec_rec %>%
+  ungroup %>%
+  dplyr::select(YEAR, StockName, recruits_abund_lead1_anom) %>%
+  dplyr::rename(Time = YEAR,
+                Value = recruits_abund_lead1_anom) %>%
+  dplyr::mutate(Units = "anomaly",
+                Var  = StockName,
+                Source = "stocksmart") %>%
+  dplyr::select(-StockName)
+
+bar_dat <- dat_spec_reconly_SS
+
+allstocks <- plot_stackbarcpts_single(YEAR = bar_dat$Time,
+                         var2bar = bar_dat$Var,
+                         x = bar_dat$Value,
+                         titl = "All stocks",
+                         xlab = "",
+                         ylab = "Recruits (anomaly)",
+                         height = 5.5,
+                         width = 9,
+                         filt = FALSE,
+                         label = "",
+                         y.text = 10,
+                         aggregate = TRUE,
+                         intplot = TRUE,
+                         remove_leg = TRUE)
+#all
+ggiraph(code = print(allstocks), pointsize = 14, width_svg = 8, height_svg = 6)
+
+
+
+```
+
+```{r}
+
+bar_dat <- dat_spec_reconly_SS %>%
+  filter(Var %in% c("Atlantic mackerel - Gulf of Maine / Cape Hatteras",
+                    "Tilefish - Mid-Atlantic Coast" ,
+                    "Yellowtail flounder - Southern New England / Mid-Atlantic",
+                    "Winter flounder - Southern New England / Mid-Atlantic" ,
+                    "Summer flounder - Mid-Atlantic Coast" ,
+                    "Scup - Atlantic Coast",
+                    "Bluefish - Atlantic Coast",
+                    "Black sea bass - Mid-Atlantic Coast",
+                    "Butterfish - Gulf of Maine / Cape Hatteras"
+  ))
+
+midstocks <- plot_stackbarcpts_single(YEAR = bar_dat$Time,
+                         var2bar = bar_dat$Var,
+                         x = bar_dat$Value,
+                         titl = "Mid-Atlantic stocks",
+                         xlab = "",
+                         ylab = "Recruits (anomaly)",
+                         height = 5.5,
+                         width = 9,
+                         filt = FALSE,
+                         label = "",
+                         y.text = 10,
+                         aggregate = TRUE,
+                         intplot = TRUE,
+                         remove_leg = TRUE)
+#all
+ggiraph(code = print(midstocks), pointsize = 14, width_svg = 8, height_svg = 6)
+```
+
+#### Spawner Biomass anomaly
+
+```{r}
+
+dat_spec_ssbonly_SS <-
+  dat_spec_rec %>%
+  ungroup %>%
+  dplyr::select(YEAR, StockName, spawners_biom_lag0_anom) %>%
+  dplyr::rename(Time = YEAR,
+                Value = spawners_biom_lag0_anom) %>%
+  dplyr::mutate(Units = "anomaly",
+                Var  = StockName,
+                Source = "stocksmart") %>%
+  dplyr::select(-StockName)
+
+bar_dat <- dat_spec_ssbonly_SS
+
+allstocks <- plot_stackbarcpts_single(YEAR = bar_dat$Time,
+                         var2bar = bar_dat$Var,
+                         x = bar_dat$Value,
+                         titl = "All stocks",
+                         xlab = "",
+                         ylab = "Mature biomass (anomaly)",
+                         height = 5.5,
+                         width = 9,
+                         filt = FALSE,
+                         label = "",
+                         y.text = 10,
+                         aggregate = TRUE,
+                         intplot = TRUE,
+                         remove_leg = TRUE)
+#all
+ggiraph(code = print(allstocks), pointsize = 14, width_svg = 8, height_svg = 6)
+
+
+
+```
+
+```{r}
+
+bar_dat <- dat_spec_ssbonly_SS %>%
+  filter(Var %in% c("Atlantic mackerel - Gulf of Maine / Cape Hatteras",
+                    "Tilefish - Mid-Atlantic Coast" ,
+                    "Yellowtail flounder - Southern New England / Mid-Atlantic",
+                    "Winter flounder - Southern New England / Mid-Atlantic" ,
+                    "Summer flounder - Mid-Atlantic Coast" ,
+                    "Scup - Atlantic Coast",
+                    "Bluefish - Atlantic Coast",
+                    "Black sea bass - Mid-Atlantic Coast",
+                    "Butterfish - Gulf of Maine / Cape Hatteras"
+  ))
+
+midstocks <- plot_stackbarcpts_single(YEAR = bar_dat$Time,
+                         var2bar = bar_dat$Var,
+                         x = bar_dat$Value,
+                         titl = "Mid-Atlantic stocks",
+                         xlab = "",
+                         ylab = "Mature biomass (anomaly)",
+                         height = 5.5,
+                         width = 9,
+                         filt = FALSE,
+                         label = "",
+                         y.text = 10,
+                         aggregate = TRUE,
+                         intplot = TRUE,
+                         remove_leg = TRUE)
+#all
+ggiraph(code = print(midstocks), pointsize = 14, width_svg = 8, height_svg = 6)
+```
