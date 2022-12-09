@@ -6,6 +6,7 @@ output:
   html_document:
     code_fold: hide
     toc: true
+bibliography: msrec.bib
 ---
 
 ```{r setup, include=FALSE}
@@ -25,9 +26,11 @@ library(ggiraph)
 
 ## Evaluate change in recruitment over time for assessed species
 
+This is an update to analyses presented in @perretti_regime_2017. Code courtesy Charles Perretti and Kim Bastille.
+
 ### Get stocksmart info
 
-As of Dec 9 when this was run, only Atlantic herring, Butterfish, Illex, and SNEMA Winter flounder assessments have 2022 assessment results in stockSMART. Further, the Butterfish 2022 results may be from the research track assessment, rather than the management track assessment, as noted [here](https://sgaichas.github.io/stockstatusindicator/StockStatus2022.html). 
+As of Dec 9, 2022 when this was run, only Atlantic herring, Butterfish, Illex, and SNEMA Winter flounder assessments have 2022 assessment results in stockSMART. Further, the Butterfish 2022 results may be from the research track assessment, rather than the management track assessment, as noted [here](https://sgaichas.github.io/stockstatusindicator/StockStatus2022.html). 
 
 That means assessment updates for many NEFSC species in 2022 are not yet included here, but the labor of going through individual assessments for time series is too error prone, so these will just have to wait until stockSMART is updated: 
 
@@ -998,3 +1001,5 @@ midstocks <- plot_stackbarcpts_single(YEAR = bar_dat$Time,
 #all
 ggiraph(code = print(midstocks), pointsize = 14, width_svg = 8, height_svg = 6)
 ```
+
+## References
