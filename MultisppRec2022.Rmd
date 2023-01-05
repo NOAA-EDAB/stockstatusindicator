@@ -15,7 +15,9 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 remotes::install_github("https://github.com/NOAA-EDAB/stocksmart")
 
 library(here)
-library(tidyverse)
+#library(tidyverse)
+library(dplyr)
+library(ggplot2)
 library(DT)
 library(stocksmart)
 library(ggrepel)
@@ -30,13 +32,11 @@ This is an update to analyses presented in @perretti_regime_2017. Code courtesy 
 
 ### Get stocksmart info
 
-As of Dec 9, 2022 when this was run, only Atlantic herring, Butterfish, Illex, and SNEMA Winter flounder assessments have 2022 assessment results in stockSMART. Further, the Butterfish 2022 results may be from the research track assessment, rather than the management track assessment, as noted [here](https://sgaichas.github.io/stockstatusindicator/StockStatus2022.html). 
-
-That means assessment updates for many NEFSC species in 2022 are not yet included here, but the labor of going through individual assessments for time series is too error prone, so these will just have to wait until stockSMART is updated: 
-
-American plaice, Atlantic bluefish, Atlantic halibut, Atlantic wolffish, Butterfish (MT assessment), Haddock (2 stocks), Monkfish (2 stocks), Ocean Pout, Pollock, Spiny dogfish, White hake, Winter flounder (2 stocks), Witch flounder, and Yellowtail flounder (2 stocks)
+UPDATE: StockSMART was updated in mid-December 2022 with Northeast US assessment results, and `stocksmart` now has all results.
 
 Can we pull most recent recruitment and SSB or other B outputs from Northeast US stock assessments? Which species do we have? What units are recruitments in?
+
+These are all stocks, most recent assessment year reporting recruitment.
 
 ```{r}
 NErec <- stocksmart::stockAssessmentData %>%
@@ -56,7 +56,7 @@ datatable(sppunits, rownames = FALSE,
 
 ```
 
-Lets check the units for biomass too.
+These are ball stocks, most recent recruitment year, reporting abundance. Lets check the units for biomass too.
 
 ```{r}
 NEbio <- stocksmart::stockAssessmentData %>%
@@ -79,6 +79,43 @@ Select down to stocks used in SOE productivity anomaly indicator? Won't split th
 
 Also, lets not use assessments prior to 2019.
 
+ADD A CHECK: do we only have one assessment per species? Yes, we did pull max(AssessmentYear)
+
+Which assessments are in `stocksmart` with assessment 2019 or later? Spawning stock biomass on the left and recruitment on the right:
+
+<div style="width: 48%; float: left;">
+```{r , echo = FALSE}
+# side by side datatables https://stackoverflow.com/questions/46059487/rmarkdown-two-datatables-next-to-each-other
+
+SSByr <- NEbio %>%
+  group_by(StockName) %>%
+  select(StockName, AssessmentYear) %>%
+  filter(AssessmentYear>2018) %>%
+  distinct()
+
+recyr <- NErec %>%
+  group_by(StockName) %>%
+  select(StockName, AssessmentYear) %>%
+  filter(AssessmentYear>2018) %>%
+  distinct()
+
+datatable(SSByr, caption = "SSB available")
+
+```
+</div>
+
+<div style="width: 48%; float: right;">
+```{r , echo = FALSE}
+datatable(recyr, caption = "Recruitment available")
+```
+</div>
+
+These don't align well. How about a useless sentence?
+
+### The input assessment set
+
+Which stocks with assessments 2019 or newer have both recruitment in numbers and SSB in biomass? This limits us to fewer stocks.
+
 ```{r}
 
 # first pass only stocks with both rec in N and bio but keep all years of bio
@@ -97,8 +134,15 @@ NErecstocks <- NErecN %>%
 NEbiohasrec <- NEbio %>%
   filter(StockName %in% NErecstocks$StockName)
 
+bothyr <- NEbiohasrec %>%
+  group_by(StockName) %>%
+  select(StockName, AssessmentYear) %>%
+  distinct()
 
+datatable(bothyr)
 ```
+
+### Standardize assessment outputs
 
 Next steps: 
 
@@ -464,7 +508,7 @@ calc_rec <- function(survdat,
 
 ```
 
-This is the bit I've pulled out to use with the stock assessment recruitment and SSB series standardized above.
+This is the bit I've pulled out to use with the stock assessment recruitment and SSB series standardized above. Note leading and lagging is not used as we have done this with the input assessment info by aligning aged recruits with SSB year. We save the `ecodata` submission at the end of this code chunk. 
 
 ```{r}
 # dataset with each species std rec in SSByr and SSB 
@@ -605,6 +649,8 @@ saveRDS(dat_spec_rec, "AssessFishProdAnomaly.rds")
 
 Sub in interactive plots from [here](https://github.com/NOAA-EDAB/ecodata/blob/master/docs/InteractiveSOE.Rmd)
 
+Note that the code has been modified to only plot the black "total" line for years when all plotted stocks are assessed. At present this limits the total line for all stocks to the time series for GB haddock, 2010-2017. The mid atlantic stocks have more species with longer time series so the black line spans more of the plot.
+
 #### Recruits/Spawner Biomass anomaly
 
 ```{r}
@@ -707,8 +753,10 @@ plot_stackbarcpts_single <- function(YEAR, var2bar,
   if (aggregate){
    agg <- dat2plot %>%
      group_by(YEAR) %>%
-     dplyr::summarise(Total = sum(value, na.rm = T)) %>% 
-     mutate(Total = ifelse(Total == 0, NA, Total))
+     dplyr::summarise(Total = sum(value, na.rm = T),
+                      Count = n()) %>% # SG add a count of species
+     mutate(Totalold = ifelse(Total == 0, NA, Total),
+            Total = ifelse(Count < max(Count), NA, Total)) # SG keep only for max number species
   }
   
   p <-   
