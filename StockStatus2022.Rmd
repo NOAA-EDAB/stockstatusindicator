@@ -13,6 +13,10 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 
 remotes::install_github("https://github.com/NOAA-EDAB/stocksmart")
 
+# to have 2022's ecodata for comparison
+#remotes::install_github("noaa-edab/ecodata@v3.0",build_vignettes=TRUE)
+# that didn't work I'm building it locally from my ESR/SOE2022/ecodata folder
+
 library(here)
 library(dplyr)
 library(ggplot2)
@@ -25,6 +29,11 @@ library(ggiraph)
 
 ```
 
+# Major Takeaway
+
+The stockSMART updated plots and my by-hand dataset for 2023 SOE are the same *except* I included the status results from the December 2022 research track assessments for spiny dogfish and bluefish, both of which changed status. We need to decide whether we want these in the SOE or not.
+
+**As of January 5, SOE has my dataset with RT results**
 
 ## Pull from `stocksmart` for 2023 SOE reports
 
@@ -104,7 +113,7 @@ Then test to see if we see the updates relative to SOE 2022 (updates through 202
 
 ### Comparisons {.tabset}
 
-#### StockSMART 2022 source, Mid-Atlantic
+#### StockSMART 2023 source, Mid-Atlantic
 
 ```{r, MAFMCplot}
 
@@ -217,7 +226,7 @@ ggplot2::ggplot(data = stock_status) +
 ```
 
 
-#### StockSMART 2022 source, New England
+#### StockSMART 2023 source, New England
 
 ```{r, NEFMCtest}
 
@@ -392,7 +401,10 @@ ggplot2::ggplot(data = stock_status) +
 
 ### Issues
 
-#### 2022 local stock assessment source; ensure that stockSMART is up to date
+As of January 2023, stockSMART and `stocksmart` have been updated. We should be able to compare the above to what I did below for the December 2022 deadline. 
+
+
+#### 2022 local stock assessment source; because stockSMART wasn't up to date by December 2022
 
 Used the form here: https://apps-nefsc.fisheries.noaa.gov/saw/sasi/sasi_report_options.php
 
@@ -414,6 +426,8 @@ December 8 update: doing this by hand.
 
 Current dataset (stocksmart only to 2021) species names and necessary columns:
 ```{r current data}
+
+assess <- read.csv(here("2021assess.csv"))
 
 manualupdatenames <- assess %>%
   dplyr::group_by(Entity.Name,) %>%
@@ -676,7 +690,7 @@ update <- dplyr::bind_rows(Ahalibut,
 assessupdate <- dplyr::bind_rows(assess, update) %>%
   dplyr::arrange(Jurisdiction, Entity.Name, Assessment.Year)
 
-write.csv(assessupdate, here("assess.csv"))
+#write.csv(assessupdate, here("assess.csv"))
 
 stock_status_update <-
     assessupdate %>%
