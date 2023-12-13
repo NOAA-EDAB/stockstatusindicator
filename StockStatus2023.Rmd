@@ -399,7 +399,7 @@ ggplot2::ggplot(data = stock_status) +
 
 ### Issues
 
-None noted, stockSMART and `stocksmart` have been updated as of October 31 2023. 
+None noted, stockSMART and `stocksmart` have been updated as of December 13 2023. 
 
 
 
