@@ -15,4 +15,8 @@ output: html_document
 
 <a href="https://sgaichas.github.io/stockstatusindicator/MultisppRec2022.html" target="_blank">Multispecies recruitment indicator from stocksmart with partial 2022 update, Dec 9, 2022</a>
 
-<a href="https://sgaichas.github.io/stockstatusindicator/StockStatus2023.html" target="_blank">Update from stocksmart plus by hand additions for 2024 SOE, Dec 13, 2023</a>
+<a href="https://sgaichas.github.io/stockstatusindicator/StockStatus2023.html" target="_blank">Update from stocksmart for 2024 SOE, Dec 13, 2023</a>
+
+<a href="https://sgaichas.github.io/stockstatusindicator/MultisppRec2024.html" target="_blank">Multispecies recruitment indicator from stocksmart based on 2023 assessment updates, Jan 8, 2024</a>
+
+
