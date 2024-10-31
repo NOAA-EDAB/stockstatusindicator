@@ -38,8 +38,8 @@ addmack <- TRUE
 # add mackerel MT results by hand
 if(addmack){
   mackSS <- stocksmart::stockAssessmentData |>
-    dplyr::filter(StockName == "Atlantic mackerel - Gulf of Maine / Cape Hatteras",
-                  AssessmentYear == max(AssessmentYear)) |>
+    dplyr::filter(StockName %in% c("Atlantic mackerel - Gulf of Maine / Cape Hatteras")) |>
+    dplyr::filter(AssessmentYear == max(AssessmentYear)) |>
     dplyr::select(StockName, Metric, Description, Units, AssessmentYear, Jurisdiction) |>
     dplyr::group_by(Metric) |>
     dplyr::distinct()
@@ -567,7 +567,7 @@ SSrecbio <- NErecNstd %>%
   select(StockName, SSByr, NfishRec, SSBkg)
 
 min_year <- 1980
-max_year <- 2021
+max_year <- 2022
 
 dat_spec_rec <- SSrecbio %>%
   group_by(StockName) %>%
