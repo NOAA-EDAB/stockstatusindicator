@@ -66,6 +66,27 @@ Build a stockSMART like object from PDB files from Spring 2024 MT assessments
 
 ```{r}
 
+stocknames <- data.frame(
+  `Stock / Entity Name` = c("Black sea bass - Mid-Atlantic Coast",
+                            "Butterfish - Gulf of Maine / Cape Hatteras",
+                            "Atlantic cod - Eastern Gulf of Maine",
+                            "Atlantic cod - Georges Bank",
+                            "Atlantic cod - Southern New England",
+                            "Atlantic cod - Western Gulf of Maine",
+                            "Tilefish - Mid-Atlantic Coast",
+                            "Atlantic herring - Northwestern Atlantic Coast",
+                            "Scup - Atlantic Coast"),
+  ABBR = c("BSBUNIT",
+           "BUTUNIT",
+           "CODEGOM",
+           "CODGB",
+           "CODSNE",
+           "CODWGOM",
+           "GTFUNIT",
+           "HERUNIT",
+           "SCUNIT")
+)
+
 getstatus <- function(fname){
    #need name of stock from filename then read in other data
   statdat <- read.csv(fname, header = FALSE)
