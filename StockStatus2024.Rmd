@@ -32,8 +32,14 @@ library(ggiraph)
 
 Lets try stocksmart today, 31 Oct 2024, and see how much we have to update later if all the assessments aren't in.
 
+As of 10 Dec 2024 stocksmart is not updated but data for spring 2024 MT assessments were sent via email from Kristan Blackhart to Scott. Dan Hennen created the files.
 
-## Pull from `stocksmart` for 2025 SOE reports
+The file SISspringMT2024.zip has been included here and unzipped into the folder SISspringMT2024.
+
+Stock specific status and output time series are in csv files which I will wrangle and inteleave with stocksmart data as below. 
+
+
+## Pull from `stocksmart` for 2025 SOE reports and add PDB updates
 
 Andy renamed the assessmentdata package [stocksmart](https://noaa-edab.github.io/stocksmart/) based on [Stock SMART](https://www.st.nmfs.noaa.gov/stocksmart?app=homepage). 
 
@@ -56,24 +62,50 @@ datatable(head(stockAssessmentSummary), rownames = FALSE, options = list(scrollX
 
 ```
 
+Build a stockSMART like object from PDB files from Spring 2024 MT assessments
+
+```{r}
+
+getstatus <- function(fname){
+   #need name of stock from filename then read in other data
+  statdat <- read.csv(fname, header = FALSE)
+  statdat[statdat == "?"] <- NA
+  statdat <- statdat |>
+    dplyr::filter(V2!="") |> 
+    tidyr::pivot_wider(names_from = V1, values_from = V2)
+  
+}
+
+# get list of filenames
+
+
+# purrr map the list of filenames with getstatus into a dataframe
+
+
+# rbind them with current stocksmart?
+
+
+```
+
+
 Build ecodata input spreadsheet from `stockAssessmentSummary` and use the ecodata code to make the dataset for plotting:
 
 ```{r make-2022assess}
 
-assess2024 <- stockAssessmentSummary %>%
-  filter(`Science Center` == "NEFSC") %>%
-  select(c(`Stock Name`, Jurisdiction, FMP, `Science Center`, 
-           `Stock Area`, `Assessment Year`, `Last Data Year`,
-           `F Year`, `Estimated F`, Flimit, Fmsy, `F/Flimit`, 
-           `F/Fmsy`, Ftarget, `F/Ftarget`, `B Year`, `Estimated B`,
-           `B Unit`, Blimit, Bmsy, `B/Blimit`, `B/Bmsy`)) %>%
-  arrange(Jurisdiction, `Stock Name`, FMP, `Assessment Year`) %>%
-  rename(Entity.Name = `Stock Name`,
-         Assessment.Year = `Assessment Year`,
-         F.Fmsy = `F/Fmsy`,
-         B.Bmsy = `B/Bmsy`,
-         Estimated.F = `Estimated F`,
-         Estimated.B = `Estimated B`)
+assess2024 <- stocksmart::stockAssessmentSummary |>
+  dplyr::filter(`Science Center` == "NEFSC") |>
+  dplyr::select(c(`Stock Name`, Jurisdiction, FMP, `Science Center`, 
+                  `Stock Area`, `Assessment Year`, `Last Data Year`,
+                  `F Year`, `Estimated F`, Flimit, Fmsy, `F/Flimit`, 
+                  `F/Fmsy`, Ftarget, `F/Ftarget`, `B Year`, `Estimated B`,
+                  `B Unit`, Blimit, Bmsy, `B/Blimit`, `B/Bmsy`)) |>
+  dplyr::arrange(Jurisdiction, `Stock Name`, FMP, `Assessment Year`) |>
+  dplyr::rename(Entity.Name = `Stock Name`,
+                Assessment.Year = `Assessment Year`,
+                F.Fmsy = `F/Fmsy`,
+                B.Bmsy = `B/Bmsy`,
+                Estimated.F = `Estimated F`,
+                Estimated.B = `Estimated B`)
 
 write.csv(assess2024, here("assess.csv"))
 
