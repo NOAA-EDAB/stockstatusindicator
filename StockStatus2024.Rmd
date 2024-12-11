@@ -75,7 +75,7 @@ stocknames <- data.frame(
                             "Atlantic cod - Western Gulf of Maine",
                             "Tilefish - Mid-Atlantic Coast",
                             "Atlantic herring - Northwestern Atlantic Coast",
-                            "Scup - Atlantic Coast"),
+                            "Atlantic surfclam - Mid-Atlantic Coast"),
   ABBR = c("BSBUNIT",
            "BUTUNIT",
            "CODEGOM",
@@ -87,20 +87,34 @@ stocknames <- data.frame(
            "SCUNIT")
 )
 
-getstatus <- function(fname){
-   #need name of stock from filename then read in other data
-  statdat <- read.csv(fname, header = FALSE)
+getstatus <- function(dirfname){
+  
+  #need ABBR name of stock from filename then read in other data
+  fname <- stringr::str_split_i(dirfname, "/", -1) #last character in split
+  ABBR <- stringr::str_remove(fname, "db.RData.csv")
+  
+  statdat <- read.csv(dirfname, header = FALSE)
   statdat[statdat == "?"] <- NA
   statdat <- statdat |>
     dplyr::filter(V2!="") |> 
-    tidyr::pivot_wider(names_from = V1, values_from = V2)
+    tidyr::pivot_wider(names_from = V1, values_from = V2) |>
+    dplyr::mutate(`Stock / Entity Name` = ABBR)
   
+  return(statdat)
 }
 
-# get list of filenames
+# get list of filenames and directory paths
+datdir <- here::here("SISspringMT2024")
+fnames <- list.files(datdir) 
+fnames.status <- fnames[stringr::str_detect(fnames, "db.RData.csv")]
+dirfnames.status <- file.path(datdir, fnames.status)
 
+# purrr map the list of directory paths with getstatus into a dataframe
+MTspring24 <- purrr::map_dfr(dirfnames.status, getstatus)
 
-# purrr map the list of filenames with getstatus into a dataframe
+write.csv(MTspring24, here::here("MTspring24CHECK.csv"))
+
+# replace stock ABBR with stocksmart name using lookup
 
 
 # rbind them with current stocksmart?
