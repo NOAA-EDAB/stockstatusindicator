@@ -67,7 +67,7 @@ Build a stockSMART like object from PDB files from Spring 2024 MT assessments
 ```{r}
 
 stocknames <- data.frame(
-  `Stock / Entity Name` = c("Black sea bass - Mid-Atlantic Coast",
+  Stock.Name = c("Black sea bass - Mid-Atlantic Coast",
                             "Butterfish - Gulf of Maine / Cape Hatteras",
                             "Atlantic cod - Eastern Gulf of Maine",
                             "Atlantic cod - Georges Bank",
@@ -98,7 +98,15 @@ getstatus <- function(dirfname){
   statdat <- statdat |>
     dplyr::filter(V2!="") |> 
     tidyr::pivot_wider(names_from = V1, values_from = V2) |>
-    dplyr::mutate(`Stock / Entity Name` = ABBR)
+    dplyr::mutate(`Stock / Entity Name` = ABBR) |>
+    dplyr::rename(Entity.Name = `Stock / Entity Name`,
+                  #Fmsy = FMSY,
+                  F.Fmsy = `F/FMSY`,
+                  #Estimated.F = `Best F Estimate`,
+                  #Bmsy = BMSY,
+                  B.Bmsy = `B/BMSY` #,
+                  #Estimated.B = 
+                  )
   
   return(statdat)
 }
@@ -112,13 +120,42 @@ dirfnames.status <- file.path(datdir, fnames.status)
 # purrr map the list of directory paths with getstatus into a dataframe
 MTspring24 <- purrr::map_dfr(dirfnames.status, getstatus)
 
-write.csv(MTspring24, here::here("MTspring24CHECK.csv"))
+# add assessment year
+MTspring24$Assessment.Year <- 2024
 
 # replace stock ABBR with stocksmart name using lookup
+MTspring24$Entity.Name <- stocknames$Stock.Name[match(unlist(MTspring24$Entity.Name), stocknames$ABBR)]
 
+# stuff needs to be numeric
+MTspring24 <- type.convert(MTspring24, as.is=T)
 
-# rbind them with current stocksmart?
+# rbind them with current stocksmart? no, almost all names are different
 
+# write.csv(MTspring24, here::here("MTspring24CHECK.csv"))
+# 
+# # need to get Best B from terminal year SSB in ModelResults files
+# fnames.ts <- fnames[stringr::str_detect(fnames, "ModelResults.csv")]
+# dirfnames.ts <- file.path(datdir, fnames.ts)
+# 
+# getts <- function(dirfname){
+#   
+#   #need ABBR name of stock from filename then read in other data
+#   fname <- stringr::str_split_i(dirfname, "/", -1) #last character in split
+#   ABBR <- stringr::str_remove(fname, "ModelResults.csv")
+#   
+#   tsdat <- read.csv(dirfname, header = FALSE)
+#   
+#   # strip off top several rows and make header
+#   
+#   # get time series into stocksmart format
+#   
+#   tsdat <- tsdat |>
+#     #dplyr::filter(V2!="") |> 
+#     #tidyr::pivot_wider(names_from = V1, values_from = V2) |>
+#     dplyr::mutate(`Stock / Entity Name` = ABBR)
+#   
+#   return(tsdat)
+# }
 
 ```
 
@@ -144,11 +181,25 @@ assess2024 <- stocksmart::stockAssessmentSummary |>
 
 write.csv(assess2024, here("assess.csv"))
 
+assessmerge <- assess2024 |>
+  dplyr::select(Entity.Name, Assessment.Year, F.Fmsy, B.Bmsy)
+
+MTspring24merge <- MTspring24 |>
+  dplyr::select(Entity.Name, Assessment.Year, F.Fmsy, B.Bmsy) |>
+  dplyr::mutate(Assessment.Year = as.double(Assessment.Year)) |>
+  dplyr::filter(!stringr::str_detect(Entity.Name, "Tilefish"))  #tilefish already in stocksmart
+
+assess24patch <- dplyr::bind_rows(assessmerge, MTspring24merge)
+
 # from get_stocks.R, ecodata 2020
   #assess <- read.csv(file.path(data.dir, "2019assess.csv"))
   assess <- assess2024
+  assess <- assess24patch
   #decode <- read.csv(file.path(data.dir, "2019decoder.csv"))
-  decode <- read.csv(here("2020decoder.csv"))
+  decode <- read.csv(here::here("2020decoder.csv"))
+  
+# change decoder for new cod stocks
+  
   
 write.csv(decode, here("decoder.csv"))
 
@@ -178,7 +229,7 @@ Then test to see if we see the updates relative to SOE 2023 (updates through 202
 
 ### Comparisons {.tabset}
 
-#### StockSMART Oct 2024 source, Mid-Atlantic
+#### StockSMART Oct 2024 source + patch, Mid-Atlantic
 
 ```{r, MAFMCplot}
 
@@ -291,7 +342,7 @@ ggplot2::ggplot(data = stock_status) +
 ```
 
 
-#### StockSMART Oct 2024 source, New England
+#### StockSMART Oct 2024 source + patch, New England
 
 ```{r, NEFMCtest}
 
