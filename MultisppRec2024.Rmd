@@ -62,7 +62,65 @@ This is an update to analyses presented in @perretti_regime_2017. Code courtesy 
 
 ### Get stocksmart info
 
-UPDATE: StockSMART was updated in mid-December 2023 with Northeast US assessment results, and `stocksmart` now has all results. *Except!* Atlantic mackerel had only 2013-2022 in stockSMART so I am adding the draft results from the MT assessment by Kiersten Curti via Dan Hennen. 
+StockSMART was updated in mid-December 2023 with Northeast US assessment results, and `stocksmart` now has all results. *Except!* Atlantic mackerel had only 2013-2022 in stockSMART so I am adding the draft results from the MT assessment by Kiersten Curti via Dan Hennen. 
+
+December 2024: stocksmart has not been updated with 2024 NEFSC assessments. I am attempting to pull in the preliminary data sent by Kristan Blackhart and Dan Hennen from December 10, 2024 with code below. Data should be considered preliminary. 
+
+```{r}
+
+# similar workflow as for stock status indicator, just use ModelResults files
+
+# first a hardcoded lookup table, change this for new files
+stocknames <- data.frame(
+  Stock.Name = c("Black sea bass - Mid-Atlantic Coast",
+                            "Butterfish - Gulf of Maine / Cape Hatteras",
+                            "Atlantic cod - Eastern Gulf of Maine",
+                            "Atlantic cod - Georges Bank",
+                            "Atlantic cod - Southern New England",
+                            "Atlantic cod - Western Gulf of Maine",
+                            "Tilefish - Mid-Atlantic Coast",
+                            "Atlantic herring - Northwestern Atlantic Coast",
+                            "Atlantic surfclam - Mid-Atlantic Coast"),
+  ABBR = c("BSBUNIT",
+           "BUTUNIT",
+           "CODEGOM",
+           "CODGB",
+           "CODSNE",
+           "CODWGOM",
+           "GTFUNIT",
+           "HERUNIT",
+           "SCUNIT")
+)
+
+# read them in
+# get list of filenames and directory paths
+datdir <- here::here("SISspringMT2024")
+fnames <- list.files(datdir)
+fnames.ts <- fnames[stringr::str_detect(fnames, "ModelResults.csv")]
+dirfnames.ts <- file.path(datdir, fnames.ts)
+
+getts <- function(dirfname){
+
+  #need ABBR name of stock from filename then read in other data
+  fname <- stringr::str_split_i(dirfname, "/", -1) #last character in split
+  ABBR <- stringr::str_remove(fname, "ModelResults.csv")
+
+  tsdat <- read.csv(dirfname, header = FALSE)
+
+  # strip off top several rows and make header
+
+  # get time series into stocksmart format
+
+  tsdat <- tsdat |>
+    #dplyr::filter(V2!="") |>
+    #tidyr::pivot_wider(names_from = V1, values_from = V2) |>
+    dplyr::mutate(`Stock / Entity Name` = ABBR)
+
+  return(tsdat)
+}
+
+```
+
 
 Can we pull most recent recruitment and SSB or other B outputs from Northeast US stock assessments? Which species do we have? What units are recruitments in?
 
