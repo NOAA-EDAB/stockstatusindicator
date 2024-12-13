@@ -196,9 +196,9 @@ assess24patch <- dplyr::bind_rows(assessmerge, MTspring24merge)
   assess <- assess2024
   assess <- assess24patch
   #decode <- read.csv(file.path(data.dir, "2019decoder.csv"))
-  decode <- read.csv(here::here("2020decoder.csv"))
+  decode <- read.csv(here::here("2024decoder.csv"))
   
-# change decoder for new cod stocks
+# change decoder for new cod stocks--done in 2024decoder.csv
   
   
 write.csv(decode, here("decoder.csv"))
@@ -291,7 +291,7 @@ ggplot(data = stock_status) +
 
 a <- ecodata::plot_stock_status(report = "MidAtlantic")
 
-a$p + ggplot2::coord_cartesian(xlim=c(0,2), ylim=c(0,2.5))
+a$p + ggplot2::coord_cartesian(xlim=c(0,2.5), ylim=c(0,2.0))
 
 #Get data, spread for plotting, and filter
 # stock_status <- ecodata::stock_status %>%
@@ -529,7 +529,7 @@ a$p+ ggplot2::coord_cartesian(xlim=c(0,5), ylim=c(0,2))
 
 ### Issues
 
-None noted, stockSMART and `stocksmart` have been updated as of December 13 2023. 
+This is a patch with preliminary data; stockSMART and `stocksmart` have been not updated as of December 13 2024. 
 
 
 
