@@ -105,19 +105,21 @@ getts <- function(dirfname){
   fname <- stringr::str_split_i(dirfname, "/", -1) #last character in split
   ABBR <- stringr::str_remove(fname, "ModelResults.csv")
 
-  tsdat <- read.csv(dirfname, header = FALSE)
-
-  # strip off top several rows and make header
-
+ # strip off top several rows and make header
+  tsdat <- read.csv(dirfname, header = FALSE, skip = 5)
+  tsdat <- tsdat[,2:6]
+  names(tsdat) <- c("Year", "SSB", "F", "Rec", "Catch")
+  
   # get time series into stocksmart format
 
   tsdat <- tsdat |>
-    #dplyr::filter(V2!="") |>
-    #tidyr::pivot_wider(names_from = V1, values_from = V2) |>
-    dplyr::mutate(`Stock / Entity Name` = ABBR)
+    dplyr::mutate(Stock.Name = ABBR)
 
   return(tsdat)
 }
+
+# purrr map the list of directory paths with getts into a dataframe
+MTspring24ts <- purrr::map_dfr(dirfnames.ts, getts)
 
 ```
 
