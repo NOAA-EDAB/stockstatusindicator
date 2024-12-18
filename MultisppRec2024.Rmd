@@ -118,7 +118,8 @@ getts <- function(dirfname){
 
   tsdat <- tsdat |>
     tidyr::pivot_longer(-Year, names_to = "Metric", values_to = "Value") |>
-    dplyr::mutate(StockName = ABBR,
+    dplyr::mutate(Year = as.numeric(Year),
+                  StockName = ABBR,
                   Description = dplyr::case_when(Metric == "Abundance" ~ tsdesc[1],
                                                  Metric == "Fmort" ~ tsdesc[2],
                                                  Metric == "Recruitment" ~ tsdesc[3],
@@ -136,11 +137,28 @@ getts <- function(dirfname){
 MTspring24ts <- purrr::map_dfr(dirfnames.ts, getts)
 
 # add assessment year
-MTspring24ts$Assessment.Year <- 2024
+MTspring24ts$AssessmentYear <- as.numeric(2024)
 
 # replace stock ABBR with stocksmart name using lookup
 MTspring24ts$StockName <- stocknames$Stock.Name[match(unlist(MTspring24ts$StockName), stocknames$ABBR)]
 
+# fix units to match stocksmart
+MTspring24ts$Units[MTspring24ts$Units %in% c(" (mt)", " mt")] <- "Metric Tons"
+MTspring24ts$Units[MTspring24ts$Units %in% c(" ('000 mt)")] <- "Thousand Metric Tons" #not in stocksmart dataset
+
+MTspring24ts$Units[MTspring24ts$Units %in% c(" (000s)", " 000s")] <- "Number x 1,000"
+MTspring24ts$Units[MTspring24ts$Units %in% c(" (millions)")] <- "Number x 1,000,000"
+
+# EGOM and GB cod don't have recruitment ages so maybe its this
+# confirmed by looking up MT assessmens in portal
+MTspring24ts$Description[MTspring24ts$StockName %in% c("Atlantic cod - Eastern Gulf of Maine",
+                                                       "Atlantic cod - Georges Bank")] <- "Recruits (age 1)"
+
+patchBio <- MTspring24ts |> 
+  dplyr::filter(Metric == "Abundance")
+
+patchRec <- MTspring24ts |>
+  dplyr::filter(Metric == "Recruitment")
 
 ```
 
@@ -153,6 +171,7 @@ These are all stocks, most recent assessment year reporting recruitment.
 NErec <- stocksmart::stockAssessmentData %>%
   filter(RegionalEcosystem == "Northeast Shelf",
          Metric == "Recruitment") %>%
+  full_join(patchRec) |>
   group_by(StockName) %>%
   filter(AssessmentYear == max(AssessmentYear)) %>%
   ungroup() 
@@ -174,12 +193,13 @@ datatable(sppunits, rownames = FALSE,
 
 ```
 
-These are ball stocks, most recent recruitment year, reporting abundance. Lets check the units for biomass too.
+These are all stocks, most recent recruitment year, reporting abundance. Lets check the units for biomass too.
 
 ```{r}
 NEbio <- stocksmart::stockAssessmentData %>%
   filter(RegionalEcosystem == "Northeast Shelf",
          Metric == "Abundance") %>%
+  dplyr::full_join(patchBio) |>
   group_by(StockName) %>%
   filter(AssessmentYear == max(AssessmentYear)) %>%
   ungroup() 
@@ -956,7 +976,7 @@ allstocks <- plot_stackbarcpts_single(YEAR = bar_dat$Time,
                          intplot = TRUE,
                          remove_leg = TRUE)
 #all
-ggiraph(code = print(allstocks), pointsize = 14, width_svg = 8, height_svg = 6)
+ggiraph::girafe(code = print(allstocks), pointsize = 14, width_svg = 8, height_svg = 6)
 
 ```
 
@@ -989,7 +1009,7 @@ midstocks <- plot_stackbarcpts_single(YEAR = bar_dat$Time,
                          intplot = TRUE,
                          remove_leg = TRUE)
 #all
-ggiraph(code = print(midstocks), pointsize = 14, width_svg = 8, height_svg = 6)
+ggiraph::girafe(code = print(midstocks), pointsize = 14, width_svg = 8, height_svg = 6)
 
 ```
 
@@ -1072,7 +1092,7 @@ allstocks <- plot_stackbarcpts_single(YEAR = bar_dat$Time,
                          intplot = TRUE,
                          remove_leg = TRUE)
 #all
-ggiraph(code = print(allstocks), pointsize = 14, width_svg = 8, height_svg = 6)
+ggiraph::girafe(code = print(allstocks), pointsize = 14, width_svg = 8, height_svg = 6)
 
 
 
@@ -1107,7 +1127,7 @@ midstocks <- plot_stackbarcpts_single(YEAR = bar_dat$Time,
                          intplot = TRUE,
                          remove_leg = TRUE)
 #all
-ggiraph(code = print(midstocks), pointsize = 14, width_svg = 8, height_svg = 6)
+ggiraph::girafe(code = print(midstocks), pointsize = 14, width_svg = 8, height_svg = 6)
 ```
 
 #### Spawner Biomass anomaly
@@ -1142,7 +1162,7 @@ allstocks <- plot_stackbarcpts_single(YEAR = bar_dat$Time,
                          intplot = TRUE,
                          remove_leg = TRUE)
 #all
-ggiraph(code = print(allstocks), pointsize = 14, width_svg = 8, height_svg = 6)
+ggiraph::girafe(code = print(allstocks), pointsize = 14, width_svg = 8, height_svg = 6)
 
 
 
@@ -1177,7 +1197,7 @@ midstocks <- plot_stackbarcpts_single(YEAR = bar_dat$Time,
                          intplot = TRUE,
                          remove_leg = TRUE)
 #all
-ggiraph(code = print(midstocks), pointsize = 14, width_svg = 8, height_svg = 6)
+ggiraph::girafe(code = print(midstocks), pointsize = 14, width_svg = 8, height_svg = 6)
 ```
 
 ## References
