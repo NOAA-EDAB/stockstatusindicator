@@ -1,0 +1,553 @@
+---
+title: "2025 SOE stock status indicator, code update"
+author: "Abigail Tyrell"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_fold: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+
+remotes::install_github("https://github.com/NOAA-EDAB/stocksmart")
+
+# to have 2023's ecodata release for comparison
+# remotes::install_github("noaa-edab/ecodata@v3.0",build_vignettes=TRUE)
+# that didn't work I'm building it locally from my ESR/SOE2022/ecodata folder
+
+library(here)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(DT)
+library(stocksmart)
+library(ggrepel)
+# library(ecodata)
+library(ggiraph)
+
+devtools::load_all(here::here("../ecodata"))
+```
+# README
+
+This is a methods test of the stock status indicator. I am trying to re-run the code that Sarah used to create the indicator last year. 
+
+# Major Takeaway
+
+Lets try stocksmart today, 31 Oct 2024, and see how much we have to update later if all the assessments aren't in.
+
+As of 10 Dec 2024 stocksmart is not updated but data for spring 2024 MT assessments were sent via email from Kristan Blackhart to Scott. Dan Hennen created the files.
+
+The file SISspringMT2024.zip has been included here and unzipped into the folder SISspringMT2024.
+
+Stock specific status and output time series are in csv files which I will wrangle and inteleave with stocksmart data as below. 
+
+
+## Pull from `stocksmart` for 2025 SOE reports and add PDB updates
+
+Andy renamed the assessmentdata package [stocksmart](https://noaa-edab.github.io/stocksmart/) based on [Stock SMART](https://www.st.nmfs.noaa.gov/stocksmart?app=homepage). 
+
+Two data frames are in the package, `stockAssessmentData` and `stockAssessmentSummary`.
+
+In `stockAssessmentData` we have time series. Columns are `r names(stockAssessmentData)` and the reported metrics are `r unique(stockAssessmentData$Metric)`. 
+
+
+```{r}
+datatable(head(stockAssessmentData), rownames = FALSE, options = list(scrollX = TRUE))
+```
+
+In `stockAssessmentSummary` we have assessment metadata. Columns are `r (names(stockAssessmentSummary))`.
+
+```{r}
+datatable(head(stockAssessmentSummary), rownames = FALSE, options = list(scrollX = TRUE))
+```
+
+Build a stockSMART like object from PDB files from Spring 2024 MT assessments
+
+```{r}
+stocknames <- data.frame(
+  Stock.Name = c(
+    "Black sea bass - Mid-Atlantic Coast",
+    "Butterfish - Gulf of Maine / Cape Hatteras",
+    "Atlantic cod - Eastern Gulf of Maine",
+    "Atlantic cod - Georges Bank",
+    "Atlantic cod - Southern New England",
+    "Atlantic cod - Western Gulf of Maine",
+    "Tilefish - Mid-Atlantic Coast",
+    "Atlantic herring - Northwestern Atlantic Coast",
+    "Atlantic surfclam - Mid-Atlantic Coast"
+  ),
+  ABBR = c(
+    "BSBUNIT",
+    "BUTUNIT",
+    "CODEGOM",
+    "CODGB",
+    "CODSNE",
+    "CODWGOM",
+    "GTFUNIT",
+    "HERUNIT",
+    "SCUNIT"
+  )
+)
+
+getstatus <- function(dirfname) {
+  # need ABBR name of stock from filename then read in other data
+  fname <- stringr::str_split_i(dirfname, "/", -1) # last character in split
+  ABBR <- stringr::str_remove(fname, "db.RData.csv")
+
+  statdat <- read.csv(dirfname, header = FALSE)
+  statdat[statdat == "?"] <- NA
+  statdat <- statdat |>
+    dplyr::filter(V2 != "") |>
+    tidyr::pivot_wider(names_from = V1, values_from = V2) |>
+    dplyr::mutate(`Stock / Entity Name` = ABBR) |>
+    dplyr::rename(
+      Entity.Name = `Stock / Entity Name`,
+      # Fmsy = FMSY,
+      F.Fmsy = `F/FMSY`,
+      # Estimated.F = `Best F Estimate`,
+      # Bmsy = BMSY,
+      B.Bmsy = `B/BMSY` # ,
+      # Estimated.B =
+    )
+
+  return(statdat)
+}
+
+# get list of filenames and directory paths
+datdir <- here::here("SISspringMT2024")
+fnames <- list.files(datdir)
+fnames.status <- fnames[stringr::str_detect(fnames, "db.RData.csv")]
+dirfnames.status <- file.path(datdir, fnames.status)
+
+# purrr map the list of directory paths with getstatus into a dataframe
+MTspring24 <- purrr::map_dfr(dirfnames.status, getstatus)
+
+# add assessment year
+MTspring24$Assessment.Year <- 2024
+
+# replace stock ABBR with stocksmart name using lookup
+MTspring24$Entity.Name <- stocknames$Stock.Name[match(unlist(MTspring24$Entity.Name), stocknames$ABBR)]
+
+# stuff needs to be numeric
+MTspring24 <- type.convert(MTspring24, as.is = T)
+
+# rbind them with current stocksmart? no, almost all names are different
+
+# write.csv(MTspring24, here::here("MTspring24CHECK.csv"))
+#
+# # need to get Best B from terminal year SSB in ModelResults files
+# fnames.ts <- fnames[stringr::str_detect(fnames, "ModelResults.csv")]
+# dirfnames.ts <- file.path(datdir, fnames.ts)
+#
+# getts <- function(dirfname){
+#
+#   #need ABBR name of stock from filename then read in other data
+#   fname <- stringr::str_split_i(dirfname, "/", -1) #last character in split
+#   ABBR <- stringr::str_remove(fname, "ModelResults.csv")
+#
+#   tsdat <- read.csv(dirfname, header = FALSE)
+#
+#   # strip off top several rows and make header
+#
+#   # get time series into stocksmart format
+#
+#   tsdat <- tsdat |>
+#     #dplyr::filter(V2!="") |>
+#     #tidyr::pivot_wider(names_from = V1, values_from = V2) |>
+#     dplyr::mutate(`Stock / Entity Name` = ABBR)
+#
+#   return(tsdat)
+# }
+```
+
+
+Build ecodata input spreadsheet from `stockAssessmentSummary` and use the ecodata code to make the dataset for plotting:
+
+```{r make-2022assess}
+assess2024 <- stocksmart::stockAssessmentSummary |>
+  dplyr::filter(`Science Center` == "NEFSC") |>
+  dplyr::select(c(
+    `Stock Name`, Jurisdiction, FMP, `Science Center`,
+    `Stock Area`, `Assessment Year`, `Last Data Year`,
+    `F Year`, `Estimated F`, Flimit, Fmsy, `F/Flimit`,
+    `F/Fmsy`, Ftarget, `F/Ftarget`, `B Year`, `Estimated B`,
+    `B Unit`, Blimit, Bmsy, `B/Blimit`, `B/Bmsy`
+  )) |>
+  dplyr::arrange(Jurisdiction, `Stock Name`, FMP, `Assessment Year`) |>
+  dplyr::rename(
+    Entity.Name = `Stock Name`,
+    Assessment.Year = `Assessment Year`,
+    F.Fmsy = `F/Fmsy`,
+    B.Bmsy = `B/Bmsy`,
+    Estimated.F = `Estimated F`,
+    Estimated.B = `Estimated B`
+  )
+
+write.csv(assess2024, here("2025/assess.csv"))
+
+assessmerge <- assess2024 |>
+  dplyr::select(Entity.Name, Assessment.Year, F.Fmsy, B.Bmsy)
+
+MTspring24merge <- MTspring24 |>
+  dplyr::select(Entity.Name, Assessment.Year, F.Fmsy, B.Bmsy) |>
+  dplyr::mutate(Assessment.Year = as.double(Assessment.Year)) |>
+  dplyr::filter(!stringr::str_detect(Entity.Name, "Tilefish")) # tilefish already in stocksmart
+
+# TODO: filter stocksmart data so this binding is accurate/necessary
+# assess24patch <- dplyr::bind_rows(assessmerge, MTspring24merge)
+assess24patch <- assessmerge
+
+# from get_stocks.R, ecodata 2020
+# assess <- read.csv(file.path(data.dir, "2019assess.csv"))
+assess <- assess2024
+assess <- assess24patch
+# decode <- read.csv(file.path(data.dir, "2019decoder.csv"))
+decode <- read.csv(here::here("2024decoder.csv"))
+
+# change decoder for new cod stocks--done in 2024decoder.csv
+
+
+write.csv(decode, here("2025/decoder.csv"))
+
+stock_status_stockSMART <-
+  assess %>%
+  dplyr::group_by(Entity.Name) %>%
+  dplyr::filter(Assessment.Year == max(Assessment.Year)) %>%
+  # Find last year assessment occurred for each stock
+  dplyr::ungroup() %>%
+  dplyr::left_join(., decode, by = "Entity.Name") %>% # Join in list of managed species
+  dplyr::select(Entity.Name, Assessment.Year, F.Fmsy, B.Bmsy, Council, Code) %>%
+  # select column variables to keep
+  dplyr::mutate(id = 1:length(Entity.Name)) %>%
+  tidyr::gather(., Var, Value, -id, -Entity.Name, -Assessment.Year, -Council, -Code) %>%
+  # wide to long
+  dplyr::select(-id) %>%
+  dplyr::rename(
+    `Last assessment` = Assessment.Year,
+    Stock = Entity.Name
+  ) %>% # rename variables for clarity
+  dplyr::mutate(Units = "unitless") # %>%
+# dplyr::mutate(Value = replace(Value, which(Code == "N Windowpane" & Var == "F.Fmsy"), NA))
+```
+
+Then test to see if we see the updates relative to SOE 2023 (updates through 2022) ecodata. I'm leaving out all the plot annotations for unknown status. 
+
+### Comparisons {.tabset}
+
+#### StockSMART Oct 2024 source + patch, Mid-Atlantic
+
+```{r, MAFMCplot}
+stock_status <-
+  stock_status_stockSMART %>%
+  mutate(Code = recode(Code, "Dogfish" = "Sp. Dogfish")) %>%
+  # spread(.,Var,Value) %>%
+  tidyr::pivot_wider(
+    names_from = Var,
+    values_from = Value
+  ) |>
+  filter(Council %in% c("MAFMC", "Both")) %>%
+  group_by(Stock) %>%
+  mutate(score = case_when(
+    (B.Bmsy < 0.5) ~ "a",
+    (F.Fmsy > 1) ~ "a",
+    (F.Fmsy < 1 & B.Bmsy > 0.5 & B.Bmsy < 1) ~ "b",
+    (F.Fmsy < 1 & B.Bmsy > 1) ~ "c"
+  ))
+# Plot constants
+y.max <- 2.1 # 2.0 mackerel cut off F/Fmsy is 2.08
+x.max <- 2.6
+# A dataframe that defines custom legend for stocks with unknown status
+# unknown <- data.frame(text = c("Unknown Status", "Longfin Squid",
+#                               "Shortfin Squid", "N. Goosefish", "S. Goosefish"),
+#                     x = rep(0.9*x.max,5), y = seq(0.93*y.max,1.5,-.1))
+
+# Custom Color
+custom_color <- c("#56B4E9", "#009E73", "#0072B2")
+# Plotting code
+ggplot(data = stock_status) +
+  geom_vline(xintercept = 1, linetype = "dotted") +
+  geom_vline(xintercept = 0.5, linetype = "dashed") +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  geom_point(aes(
+    x = B.Bmsy,
+    y = F.Fmsy,
+    shape = Council,
+    color = score
+  )) +
+  geom_text_repel(
+    aes(
+      x = B.Bmsy, # geom_text_repel auto-jitters text around points
+      y = F.Fmsy,
+      label = Code,
+      color = score
+    ),
+    show.legend = FALSE, nudge_y = -0.01, nudge_x = 0.05
+  ) +
+  scale_color_brewer(
+    palette = "Dark2",
+    breaks = stock_status$score
+  ) +
+  ylim(0, y.max) +
+  xlim(0, x.max) +
+  # geom_text(data = unknown, aes(x = x, y = y, label = text), #Custom legend for unknown stock status
+  #           size = c(4.75,rep(4,4))) +
+  # annotate("rect", xmin = 0.8*x.max,
+  #          xmax = x.max,
+  #          ymin = 0.65*y.max,
+  #          ymax = 0.90*y.max,
+  #          alpha = 0.1) +
+  xlab(expression(~ B / B[msy])) +
+  ylab(expression(~ F / F[msy])) +
+  guides(color = FALSE) +
+  theme_ts()
+```
+
+#### SOE 2024 ecodata source, Mid-Atlantic
+
+```{r, MAFMC2022plot}
+a <- ecodata::plot_stock_status(report = "MidAtlantic")
+
+a$p + ggplot2::coord_cartesian(xlim = c(0, 2.5), ylim = c(0, 2.0))
+
+# Get data, spread for plotting, and filter
+# stock_status <- ecodata::stock_status %>%
+#   dplyr::mutate(Code = recode(Code, "Dogfish" = "Sp. Dogfish" ),
+#                 Code = recode(Code, "Mackerel" = "At. Mackerel")) %>%
+#   tidyr::spread(.,Var,Value) %>%
+#   dplyr::filter(Council %in% c("MAFMC","Both")) %>%
+#   dplyr::group_by(Stock) %>%
+#   dplyr::mutate(score = case_when(
+#     (B.Bmsy <0.5) ~"a",
+#     (F.Fmsy >1) ~ "a",
+#     (F.Fmsy < 1 & B.Bmsy > 0.5 & B.Bmsy < 1) ~ "b",
+#     (F.Fmsy < 1 & B.Bmsy > 1) ~ "c"))
+# #Plot constants
+# y.max <- 2.1 #1.75 mackerel cut off F/Fmsy is 1.8
+# x.max <- 2.6
+# #A dataframe that defines custom legend for stocks with unknown status
+# unknown <- data.frame(text = c("Unknown Status", "Longfin Squid",
+#                               "Shortfin Squid", "N. Goosefish", "S. Goosefish", "Blueline Tilefish", "Chub Mackerel"),
+#                     x = rep(0.9*x.max,7), y = seq(0.88*y.max,1.2,-0.1))
+#
+# # Custom Color
+# custom_color<- c("#56B4E9", "#009E73", "#0072B2")
+# #Plotting code
+# ggplot2::ggplot(data = stock_status) +
+#   ggplot2::geom_vline(xintercept = 1, linetype = "dotted")+
+#   ggplot2::geom_vline(xintercept = 0.5, linetype = "dashed")+
+#   ggplot2::geom_hline(yintercept = 1, linetype = "dashed") +
+#   ggplot2::geom_point(aes(x = B.Bmsy,
+#                  y = F.Fmsy,
+#                  shape = Council,
+#                  color = score)) +
+#   ggrepel::geom_text_repel(aes(x = B.Bmsy, #geom_text_repel auto-jitters text around points
+#                       y = F.Fmsy,
+#                       label = Code,
+#                       color = score),
+#                   show.legend = FALSE, nudge_y = -0.01, nudge_x = 0.05) +
+#   ggplot2::scale_color_brewer(palette = "Dark2",
+#                      breaks = stock_status$score) +
+#   ggplot2::ylim(0,y.max) +
+#   ggplot2::xlim(0,x.max) +
+#   ggplot2::geom_text(data = unknown, aes(x = x-0.5, y = y+0.2, label = text), #Custom legend for unknown stock status
+#             size = c(4.75,rep(4,6))) +
+#   #ggplot2::annotate("rect", xmin = 0.8*x.max,
+#   #         xmax = x.max
+#   #         ymin = 0.65*y.max,
+#   #         ymax = 0.90*y.max,
+#   #         alpha = 0.1) +
+#   ggplot2::xlab(expression(~B/B[msy])) +
+#   ggplot2::ylab(expression(~F/F[msy])) +
+#   ggplot2::guides(color = FALSE) +
+# ecodata::theme_ts()
+```
+
+
+#### StockSMART Oct 2024 source + patch, New England
+
+```{r, NEFMCtest}
+stock_status <- stock_status_stockSMART %>%
+  mutate(Code = recode(Code, "Dogfish" = "Sp. Dogfish")) %>%
+  spread(., Var, Value) %>%
+  filter(Council %in% c("NEFMC", "Both")) %>%
+  group_by(Stock) %>%
+  mutate(score = case_when(
+    (B.Bmsy < 0.5) ~ "a",
+    (F.Fmsy > 1) ~ "a",
+    (F.Fmsy < 1 & B.Bmsy > 0.5 & B.Bmsy < 1) ~ "b",
+    (F.Fmsy < 1 & B.Bmsy > 1) ~ "c"
+  ))
+# Plot constants
+y.max <- 1.5
+x.max <- 10
+all_missing <- stock_status %>%
+  filter(is.na(B.Bmsy), is.na(F.Fmsy)) %>%
+  dplyr::select(Code, Council)
+b_missing <- stock_status %>%
+  filter(is.na(B.Bmsy), !is.na(F.Fmsy)) %>%
+  dplyr::select(Code, Council)
+f_missing <- stock_status %>%
+  filter(is.na(F.Fmsy), !is.na(B.Bmsy)) %>%
+  dplyr::select(Code, Council)
+# A dataframe that defines custom legend for stocks with unknown status
+# all.df <- data.frame(text = all_missing$Code,
+#                     x = rep(x.max*0.9,length(all_missing$Code)),
+#                     #y = seq(1.45,1.05, length.out = 7))
+#                     y = seq(1.45,1.05, length.out = length(all_missing$Code)))
+# b.df <- data.frame(text = b_missing$Code,
+#                     x = rep(x.max*0.7,length(b_missing$Code)),
+#                     y = c(1.45,2.15, length.out = length(b_missing$Code)))
+# f.df <- data.frame(text = f_missing$Code,
+#                     x = rep(x.max*0.5,length(f_missing$Code)),
+#                     y = seq(1.45,1.0, length.out = length(f_missing$Code)))
+
+# Custom Color
+custom_color <- c("#56B4E9", "#009E73", "#0072B2")
+
+# Plotting code
+ggplot(data = stock_status) +
+  geom_vline(xintercept = 1, linetype = "dotted", color = "grey60") +
+  geom_vline(xintercept = 0.5, linetype = "dashed", color = "grey60") +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "grey60") +
+  geom_point(aes(
+    x = B.Bmsy,
+    y = F.Fmsy,
+    color = stock_status$score
+  )) +
+  geom_text_repel(aes(
+    x = B.Bmsy, # geom_text_repel auto-jitters text around points
+    y = F.Fmsy,
+    label = Code,
+    color = stock_status$score
+  ), show.legend = FALSE, nudge_y = -0.01, nudge_x = 0.05) +
+  ylim(0, y.max) +
+  xlim(0, x.max * 1.1) +
+  # geom_text(data = all.df, aes(x = x, y = y, label = text),show.legend = FALSE, size = 3)+
+  # geom_text(data = b.df, aes(x = x, y = y, label = text),show.legend = FALSE, size = 3)+
+  # geom_text(data = f.df, aes(x = x, y = y, label = text),show.legend = FALSE, size = 3)+
+  # scale_color_brewer(palette = "Dark2", #Change legend labels for clarity
+  #                    breaks = stock_status$score) +
+  # annotate("rect", xmin = 0.924*x.max,
+  #          xmax = 1.08*x.max,
+  #          ymin = 0.645*y.max,
+  #          ymax = 0.98*y.max,
+  #          alpha = 0.01) +
+  # annotate("text", x = 9, y = 1.5, label = "F and B missing", fontface =2, size = 3)+
+  # annotate("rect",
+  #            xmin = 0.70*x.max,
+  #            xmax = 0.85*x.max,
+  #            ymin = 0.90*y.max,
+  #            ymax = 1.8,
+  #            alpha = 0.01) +
+  # annotate("text", x = 7, y = 1.5, label = "B missing", fontface =2, size = 3)+
+  # annotate("rect", xmin = 0.509*x.max,
+  #          xmax = 0.681*x.max,
+  #          ymin = 0.65*y.max,
+  #          ymax = 0.98*y.max,
+  #          alpha = 0.01) +
+  # annotate("text", x = 5, y = 1.5, label = "F missing", fontface =2, size = 3)+
+  xlab(expression(~ B / B[msy])) +
+  ylab(expression(~ F / F[msy])) +
+  guides(color = FALSE) +
+  theme_ts()
+```
+
+
+#### SOE 2024 ecodata source, New England
+
+```{r, NEFMC2022plot}
+# Get data, spread for plotting, and filter
+
+a <- ecodata::plot_stock_status(report = "NewEngland")
+a$p + ggplot2::coord_cartesian(xlim = c(0, 5), ylim = c(0, 2))
+#+
+# ggplot2::theme(legend.position = 'bottom')
+
+# stock_status <- ecodata::stock_status %>%
+#   dplyr::mutate(Code = dplyr::recode(Code, "Dogfish" = "Sp. Dogfish" )) %>%
+#   tidyr::spread(.,Var,Value) %>%
+#   dplyr::filter(Council %in% c("NEFMC","Both")) %>%
+#   dplyr::group_by(Stock) %>%
+#   dplyr::mutate(score = case_when(
+#     (B.Bmsy <0.5) ~"a",
+#     (F.Fmsy >1) ~ "a",
+#     (F.Fmsy < 1 & B.Bmsy > 0.5 & B.Bmsy < 1) ~ "b",
+#     (F.Fmsy < 1 & B.Bmsy > 1) ~ "c"))
+# #Plot constants
+# y.max <- 1.5
+# x.max <- 10
+# all_missing <- stock_status %>%
+#   dplyr::filter(is.na(B.Bmsy),is.na(F.Fmsy)) %>%
+#   dplyr::select(Code, Council)
+# b_missing <- stock_status %>%
+#   dplyr::filter(is.na(B.Bmsy), !is.na(F.Fmsy)) %>%
+#   dplyr::select(Code, Council)
+# f_missing <- stock_status %>%
+#   dplyr::filter(is.na(F.Fmsy), !is.na(B.Bmsy)) %>%
+#   dplyr::select(Code, Council)
+# #A dataframe that defines custom legend for stocks with unknown status
+# all.df <- data.frame(text = all_missing$Code,
+#                     x = rep(x.max*0.9,length(all_missing$Code)),
+#                     y = seq(1.45,0.7, length.out = length(all_missing$Code)))
+# b.df <- data.frame(text = b_missing$Code,
+#                     x = rep(x.max*0.7,length(b_missing$Code)),
+#                     y = seq(1.45,1.30, length.out = length(b_missing$Code)))
+# f.df <- data.frame(text = f_missing$Code,
+#                     x = rep(x.max*0.5,length(f_missing$Code)),
+#                     y = seq(1.45,1, length.out = length(f_missing$Code)))
+#
+# #Plotting code
+# ggplot2::ggplot(data = stock_status) +
+#   ggplot2::geom_vline(xintercept = 1, linetype = "dotted", color = "grey60")+
+#   ggplot2::geom_vline(xintercept = 0.5, linetype = "dashed", color = "grey60")+
+#   ggplot2::geom_hline(yintercept = 1, linetype = "dashed", color = "grey60") +
+#   ggplot2::geom_point(aes(x = B.Bmsy,
+#                  y = F.Fmsy,
+#                  color = stock_status$score)) +
+#   ggrepel::geom_text_repel(aes(x = B.Bmsy, #geom_text_repel auto-jitters text around points
+#                       y = F.Fmsy,
+#                       label = Code,
+#                       color = stock_status$score), show.legend = FALSE,nudge_y = -0.01, nudge_x = 0.05) +
+#   ggplot2::ylim(0,y.max) +
+#   ggplot2::xlim(0,x.max*1.1) +
+#   ggplot2::geom_text(data = all.df, aes(x = x, y = y, label = text),show.legend = FALSE, size = 3)+
+#   ggplot2::geom_text(data = b.df, aes(x = x, y = y, label = text),show.legend = FALSE, size = 3)+
+#   ggplot2::geom_text(data = f.df, aes(x = x, y = y, label = text),show.legend = FALSE, size = 3)+
+#   ggplot2::scale_color_brewer(palette = "Dark2", #Change legend labels for clarity
+#                      breaks = stock_status$score) +
+#   ggplot2::annotate("rect", xmin = 0.924*x.max,
+#            xmax = 1.08*x.max,
+#            ymin = 0.645*y.max,
+#            ymax = 0.98*y.max,
+#            alpha = 0.01) +
+#   ggplot2::annotate("text", x = 9, y = 1.5, label = "F and B missing", fontface =2, size = 3)+
+#   ggplot2::annotate("rect",
+#              xmin = 0.70*x.max,
+#              xmax = 0.85*x.max,
+#              ymin = 0.30*y.max,
+#              ymax = 0.98*y.max,
+#              alpha = 0.01) +
+#   ggplot2::annotate("text", x = 7, y = 1.5, label = "B missing", fontface =2, size = 3)+
+#   ggplot2::annotate("rect", xmin = 0.509*x.max,
+#            xmax = 0.681*x.max,
+#            ymin = 0.65*y.max,
+#            ymax = 0.98*y.max,
+#            alpha = 0.01) +
+#   ggplot2::annotate("text", x = 5, y = 1.5, label = "F missing", fontface =2, size = 3)+
+#   ggplot2::xlab(expression(~B/B[msy])) +
+#   ggplot2::ylab(expression(~F/F[msy])) +
+#   ggplot2::guides(color = FALSE) +
+#   ecodata::theme_ts()
+```
+
+
+### {-}
+
+### Issues
+
+This is a patch with preliminary data; stockSMART and `stocksmart` have been not updated as of December 13 2024. 
+
+
+
+
