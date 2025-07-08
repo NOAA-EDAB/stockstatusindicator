@@ -183,20 +183,44 @@ assess2024 <- stocksmart::stockAssessmentSummary |>
     Estimated.F = `Estimated F`,
     Estimated.B = `Estimated B`
   )
-
 write.csv(assess2024, here("2025/assess.csv"))
+```
 
+Compare `assess2024` to the `MTspring24` data from the PDB files. 
+
+PDB data:
+```{r}
+MTspring24 |>
+  dplyr::select(Entity.Name, Assessment.Year, F.Fmsy, B.Bmsy) |>
+  dplyr::arrange(Entity.Name) |>
+  knitr::kable()
+```
+
+Updated stocksmart data:
+```{r}
+assess2024 |>
+  dplyr::select(Entity.Name, Assessment.Year, F.Fmsy, B.Bmsy) |>
+  dplyr::filter(
+    Entity.Name %in% MTspring24$Entity.Name,
+    Assessment.Year == 2024
+  ) |>
+  dplyr::arrange(Entity.Name) |>
+  knitr::kable()
+```
+
+They are the same, within rounding error. It appears that 3 cod stocks are still missing from stocksmart, so we will continue to merge in the PDB data for those stocks. 
+
+```{r}
 assessmerge <- assess2024 |>
   dplyr::select(Entity.Name, Assessment.Year, F.Fmsy, B.Bmsy)
 
 MTspring24merge <- MTspring24 |>
   dplyr::select(Entity.Name, Assessment.Year, F.Fmsy, B.Bmsy) |>
   dplyr::mutate(Assessment.Year = as.double(Assessment.Year)) |>
-  dplyr::filter(!stringr::str_detect(Entity.Name, "Tilefish")) # tilefish already in stocksmart
+  dplyr::filter(!stringr::str_detect(Entity.Name, "Tilefish")) |> # tilefish already in stocksmart
+  dplyr::filter(!Entity.Name %in% assess2024$Entity.Name) # just add the ones that aren't in stocksmart
 
-# TODO: filter stocksmart data so this binding is accurate/necessary
-# assess24patch <- dplyr::bind_rows(assessmerge, MTspring24merge)
-assess24patch <- assessmerge
+assess24patch <- dplyr::bind_rows(assessmerge, MTspring24merge)
 
 # from get_stocks.R, ecodata 2020
 # assess <- read.csv(file.path(data.dir, "2019assess.csv"))
