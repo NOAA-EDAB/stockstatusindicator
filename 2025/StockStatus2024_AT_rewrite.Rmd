@@ -1,0 +1,373 @@
+---
+title: "2025 SOE stock status indicator, code update"
+author: "Abigail Tyrell"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_fold: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+
+# remotes::install_github("https://github.com/NOAA-EDAB/stocksmart")
+
+library(here)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(DT)
+library(stocksmart)
+library(ggrepel)
+library(ecodata)
+library(ggiraph)
+
+# devtools::load_all(here::here("../ecodata"))
+```
+
+```{r functions}
+# create stocksmart-like object from files received from PDB
+getstatus <- function(dirfname) {
+  # need ABBR name of stock from filename then read in other data
+  fname <- stringr::str_split_i(dirfname, "/", -1) # last character in split
+  ABBR <- stringr::str_remove(fname, "db.RData.csv")
+
+  statdat <- read.csv(dirfname, header = FALSE)
+  statdat[statdat == "?"] <- NA
+  statdat <- statdat |>
+    dplyr::filter(V2 != "") |>
+    tidyr::pivot_wider(names_from = V1, values_from = V2) |>
+    dplyr::mutate(`Stock / Entity Name` = ABBR) |>
+    dplyr::rename(
+      Entity.Name = `Stock / Entity Name`,
+      # Fmsy = FMSY,
+      F.Fmsy = `F/FMSY`,
+      # Estimated.F = `Best F Estimate`,
+      # Bmsy = BMSY,
+      B.Bmsy = `B/BMSY` # ,
+      # Estimated.B =
+    )
+
+  return(statdat)
+}
+
+prep_for_plotting <- function(data, council = c("MAFMC", "NEFMC")) {
+  output <-
+    data %>%
+    mutate(Code = recode(Code, "Dogfish" = "Sp. Dogfish")) %>%
+    # spread(.,Var,Value) %>%
+    tidyr::pivot_wider(
+      names_from = Var,
+      values_from = Value
+    ) |>
+    filter(Council %in% c(council, "Both")) %>%
+    group_by(Stock) %>%
+    mutate(score = case_when(
+      (B.Bmsy < 0.5) ~ "a",
+      (F.Fmsy > 1) ~ "a",
+      (F.Fmsy < 1 & B.Bmsy > 0.5 & B.Bmsy < 1) ~ "b",
+      (F.Fmsy < 1 & B.Bmsy > 1) ~ "c"
+    ))
+
+  return(output)
+}
+
+plot_stocksmart <- function(data, xmax, ymax) {
+  plt <- data |>
+    ggplot() +
+    geom_vline(xintercept = 1, linetype = "dotted") +
+    geom_vline(xintercept = 0.5, linetype = "dashed") +
+    geom_hline(yintercept = 1, linetype = "dashed") +
+    geom_point(aes(
+      x = B.Bmsy,
+      y = F.Fmsy,
+      shape = Council,
+      color = score
+    )) +
+    geom_text_repel(
+      aes(
+        x = B.Bmsy, # geom_text_repel auto-jitters text around points
+        y = F.Fmsy,
+        label = Code,
+        color = score
+      ),
+      show.legend = FALSE, nudge_y = -0.01, nudge_x = 0.05
+    ) +
+    scale_color_brewer(
+      palette = "Dark2",
+      breaks = stock_status$score
+    ) +
+    ylim(0, ymax) +
+    xlim(0, xmax) +
+    xlab(expression(~ B / B[msy])) +
+    ylab(expression(~ F / F[msy])) +
+    guides(color = FALSE) +
+    theme_ts()
+
+  return(plt)
+}
+```
+# README
+
+This is a methods test of the stock status indicator. I am trying to re-run the code that Sarah used to create the indicator last year. 
+
+# Major Takeaway
+
+Lets try stocksmart today, 31 Oct 2024, and see how much we have to update later if all the assessments aren't in.
+
+As of 10 Dec 2024 stocksmart is not updated but data for spring 2024 MT assessments were sent via email from Kristan Blackhart to Scott. Dan Hennen created the files.
+
+The file SISspringMT2024.zip has been included here and unzipped into the folder SISspringMT2024.
+
+Stock specific status and output time series are in csv files which I will wrangle and inteleave with stocksmart data as below. 
+
+
+## Pull from `stocksmart` for 2025 SOE reports and add PDB updates
+
+Andy renamed the assessmentdata package [stocksmart](https://noaa-edab.github.io/stocksmart/) based on [Stock SMART](https://www.st.nmfs.noaa.gov/stocksmart?app=homepage). 
+
+Two data frames are in the package, `stockAssessmentData` and `stockAssessmentSummary`.
+
+In `stockAssessmentData` we have time series. Columns are `r names(stockAssessmentData)` and the reported metrics are `r unique(stockAssessmentData$Metric)`. 
+
+
+```{r}
+datatable(head(stockAssessmentData), rownames = FALSE, options = list(scrollX = TRUE))
+```
+
+In `stockAssessmentSummary` we have assessment metadata. Columns are `r (names(stockAssessmentSummary))`.
+
+```{r}
+datatable(head(stockAssessmentSummary), rownames = FALSE, options = list(scrollX = TRUE))
+```
+
+## Supplement with PDB data from Spring 2024 MT assessments
+
+Build a stockSMART like object from PDB files from Spring 2024 MT assessments
+
+```{r}
+stocknames <- data.frame(
+  Stock.Name = c(
+    "Black sea bass - Mid-Atlantic Coast",
+    "Butterfish - Gulf of Maine / Cape Hatteras",
+    "Atlantic cod - Eastern Gulf of Maine",
+    "Atlantic cod - Georges Bank",
+    "Atlantic cod - Southern New England",
+    "Atlantic cod - Western Gulf of Maine",
+    "Tilefish - Mid-Atlantic Coast",
+    "Atlantic herring - Northwestern Atlantic Coast",
+    "Atlantic surfclam - Mid-Atlantic Coast"
+  ),
+  ABBR = c(
+    "BSBUNIT",
+    "BUTUNIT",
+    "CODEGOM",
+    "CODGB",
+    "CODSNE",
+    "CODWGOM",
+    "GTFUNIT",
+    "HERUNIT",
+    "SCUNIT"
+  )
+)
+
+# get list of filenames and directory paths
+fnames <- here::here("SISspringMT2024") |>
+  list.files(
+    pattern = "db.RData.csv$",
+    full.names = TRUE
+  )
+
+# purrr map the list of directory paths with getstatus into a dataframe
+MTspring24 <- purrr::map_dfr(fnames, getstatus) |>
+  # add assessment year
+  dplyr::mutate(Assessment.Year = 2024) |>
+  # ensure numbers are numeric
+  type.convert(as.is = TRUE)
+
+# replace stock ABBR with stocksmart name using lookup
+MTspring24$Entity.Name <- stocknames$Stock.Name[match(unlist(MTspring24$Entity.Name), stocknames$ABBR)]
+```
+
+
+Build ecodata input spreadsheet from `stockAssessmentSummary` and use the ecodata code to make the dataset for plotting:
+
+```{r make-2022assess}
+assess2024 <- stocksmart::stockAssessmentSummary |>
+  dplyr::filter(`Science Center` == "NEFSC") |>
+  dplyr::select(c(
+    `Stock Name`, Jurisdiction, FMP, `Science Center`,
+    `Stock Area`, `Assessment Year`, `Last Data Year`,
+    `F Year`, `Estimated F`, Flimit, Fmsy, `F/Flimit`,
+    `F/Fmsy`, Ftarget, `F/Ftarget`, `B Year`, `Estimated B`,
+    `B Unit`, Blimit, Bmsy, `B/Blimit`, `B/Bmsy`
+  )) |>
+  dplyr::arrange(Jurisdiction, `Stock Name`, FMP, `Assessment Year`) |>
+  dplyr::rename(
+    Entity.Name = `Stock Name`,
+    Assessment.Year = `Assessment Year`,
+    F.Fmsy = `F/Fmsy`,
+    B.Bmsy = `B/Bmsy`,
+    Estimated.F = `Estimated F`,
+    Estimated.B = `Estimated B`
+  )
+write.csv(assess2024, here("2025/assess.csv"))
+```
+
+Compare `assess2024` to the `MTspring24` data from the PDB files. 
+
+PDB data:
+```{r}
+MTspring24 |>
+  dplyr::select(Entity.Name, Assessment.Year, F.Fmsy, B.Bmsy) |>
+  dplyr::arrange(Entity.Name) |>
+  knitr::kable()
+```
+
+Updated stocksmart data for the same species:
+```{r}
+assess2024 |>
+  dplyr::select(Entity.Name, Assessment.Year, F.Fmsy, B.Bmsy) |>
+  dplyr::filter(
+    Entity.Name %in% MTspring24$Entity.Name,
+    Assessment.Year == 2024
+  ) |>
+  dplyr::arrange(Entity.Name) |>
+  knitr::kable()
+```
+
+They are the same, within rounding error. It appears that 3 cod stocks are still missing from stocksmart, so we will continue to merge in the PDB data for those stocks. 
+
+```{r}
+assessmerge <- assess2024 |>
+  dplyr::select(Entity.Name, Assessment.Year, F.Fmsy, B.Bmsy)
+
+MTspring24merge <- MTspring24 |>
+  dplyr::select(Entity.Name, Assessment.Year, F.Fmsy, B.Bmsy) |>
+  dplyr::mutate(Assessment.Year = as.double(Assessment.Year)) |>
+  dplyr::filter(!stringr::str_detect(Entity.Name, "Tilefish")) |> # tilefish already in stocksmart
+  dplyr::filter(!Entity.Name %in% assess2024$Entity.Name) # just add the ones that aren't in stocksmart
+
+assess24patch <- dplyr::bind_rows(assessmerge, MTspring24merge)
+
+assess <- assess24patch
+
+## this appears to be a manually built lookup table
+decode <- read.csv(here::here("2024decoder.csv"))
+write.csv(decode, here("2025/decoder.csv"))
+
+stock_status_stockSMART <-
+  assess %>%
+  dplyr::group_by(Entity.Name) %>%
+  dplyr::filter(Assessment.Year == max(Assessment.Year)) %>%
+  # Find last year assessment occurred for each stock
+  dplyr::ungroup() %>%
+  dplyr::left_join(., decode, by = "Entity.Name") %>% # Join in list of managed species
+  dplyr::select(Entity.Name, Assessment.Year, F.Fmsy, B.Bmsy, Council, Code) %>%
+  # select column variables to keep
+  dplyr::mutate(id = 1:length(Entity.Name)) %>%
+  tidyr::gather(., Var, Value, -id, -Entity.Name, -Assessment.Year, -Council, -Code) %>%
+  # wide to long
+  dplyr::select(-id) %>%
+  dplyr::rename(
+    `Last assessment` = Assessment.Year,
+    Stock = Entity.Name
+  ) %>% # rename variables for clarity
+  dplyr::mutate(Units = "unitless") # %>%
+# dplyr::mutate(Value = replace(Value, which(Code == "N Windowpane" & Var == "F.Fmsy"), NA))
+
+write.csv(stock_status_stockSMART, here("2025/stock_status.csv"), row.names = FALSE)
+```
+
+Then test to see if we see the updates relative to SOE 2023 (updates through 2022) ecodata. I'm leaving out all the plot annotations for unknown status. 
+
+## Comparisons {.tabset}
+
+### StockSMART Oct 2024 source + patch, Mid-Atlantic
+
+```{r, MAFMCplot}
+stock_status <- stock_status_stockSMART |>
+  prep_for_plotting(council = "MAFMC")
+
+# A dataframe that defines custom legend for stocks with unknown status
+# unknown <- data.frame(text = c("Unknown Status", "Longfin Squid",
+#                               "Shortfin Squid", "N. Goosefish", "S. Goosefish"),
+#                     x = rep(0.9*x.max,5), y = seq(0.93*y.max,1.5,-.1))
+
+# Custom Color -- this isn't used anywhere but keeping for record
+custom_color <- c("#56B4E9", "#009E73", "#0072B2")
+
+plot_stocksmart(stock_status, xmax = 2.6, ymax = 2.1)
+```
+
+### SOE 2024 ecodata source, Mid-Atlantic
+
+```{r, MAFMC2022plot}
+a <- ecodata::plot_stock_status(report = "MidAtlantic")
+
+a$p + ggplot2::coord_cartesian(xlim = c(0, 2.5), ylim = c(0, 2.0))
+```
+
+
+### StockSMART Oct 2024 source + patch, New England
+
+```{r, NEFMCtest}
+stock_status <- stock_status_stockSMART |>
+  prep_for_plotting(council = "NEFMC")
+
+plot_stocksmart(stock_status, xmax = 5, ymax = 2)
+
+# doesn't seem like anything is done with this data?
+all_missing <- stock_status %>%
+  filter(is.na(B.Bmsy), is.na(F.Fmsy)) %>%
+  dplyr::select(Code, Council)
+b_missing <- stock_status %>%
+  filter(is.na(B.Bmsy), !is.na(F.Fmsy)) %>%
+  dplyr::select(Code, Council)
+f_missing <- stock_status %>%
+  filter(is.na(F.Fmsy), !is.na(B.Bmsy)) %>%
+  dplyr::select(Code, Council)
+# A dataframe that defines custom legend for stocks with unknown status
+# all.df <- data.frame(text = all_missing$Code,
+#                     x = rep(x.max*0.9,length(all_missing$Code)),
+#                     #y = seq(1.45,1.05, length.out = 7))
+#                     y = seq(1.45,1.05, length.out = length(all_missing$Code)))
+# b.df <- data.frame(text = b_missing$Code,
+#                     x = rep(x.max*0.7,length(b_missing$Code)),
+#                     y = c(1.45,2.15, length.out = length(b_missing$Code)))
+# f.df <- data.frame(text = f_missing$Code,
+#                     x = rep(x.max*0.5,length(f_missing$Code)),
+#                     y = seq(1.45,1.0, length.out = length(f_missing$Code)))
+
+# Custom Color -- this is not used
+custom_color <- c("#56B4E9", "#009E73", "#0072B2")
+```
+
+
+### SOE 2024 ecodata source, New England
+
+```{r, NEFMC2022plot}
+# Get data, spread for plotting, and filter
+
+a <- ecodata::plot_stock_status(report = "NewEngland")
+a$p + ggplot2::coord_cartesian(xlim = c(0, 5), ylim = c(0, 2))
+```
+
+
+### {-}
+
+## Stocks with missing status
+
+```{r}
+stock_status_stockSMART |>
+  prep_for_plotting(council = c("MAFMC", "NEFMC")) |>
+  dplyr::filter(is.na(F.Fmsy) | is.na(B.Bmsy)) |>
+  dplyr::select(Council, Stock, F.Fmsy, B.Bmsy) |>
+  knitr::kable()
+```
+
+
+## Issues
+
+This is a patch with preliminary data; stockSMART and `stocksmart` have been not updated as of December 13 2024. 
+
