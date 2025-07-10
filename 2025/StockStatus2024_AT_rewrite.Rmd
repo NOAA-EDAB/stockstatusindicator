@@ -106,6 +106,67 @@ plot_stocksmart <- function(data, xmax, ymax) {
 
   return(plt)
 }
+
+create_stock_status <- function(data = stocksmart::stockAssessmentSummary,
+                                decode = read.csv(here::here("2024decoder.csv")),
+                                merge_data = NULL) {
+  assess <- data |>
+    dplyr::filter(`Science Center` == "NEFSC") |>
+    # janitor::clean_names() |>
+    dplyr::select(`Stock Name`, `Assessment Year`, `B/Bmsy`, `F/Fmsy`) |>
+    dplyr::rename(
+      Entity.Name = `Stock Name`,
+      Assessment.Year = `Assessment Year`,
+      F.Fmsy = `F/Fmsy`,
+      B.Bmsy = `B/Bmsy`
+    )
+
+  if (!is.null(merge_data)) {
+    # if we have to merge in data updates, add it to the assessment data
+    assess <- dplyr::bind_rows(assess, merge_data)
+  }
+
+  output <- assess |>
+    dplyr::group_by(Entity.Name) |>
+    dplyr::filter(Assessment.Year == max(Assessment.Year)) |>
+    # Find last year assessment occurred for each stock
+    dplyr::ungroup() |>
+    dplyr::left_join(decode, by = "Entity.Name") |> # Join in list of managed species
+    dplyr::select(Entity.Name, Assessment.Year, F.Fmsy, B.Bmsy, Council, Code) |>
+    tidyr::pivot_longer(
+      cols = c(F.Fmsy, B.Bmsy),
+      names_to = "Var",
+      values_to = "Value"
+    ) |>
+    dplyr::rename(
+      `Last assessment` = Assessment.Year,
+      Stock = Entity.Name
+    ) |> # rename variables for clarity
+    dplyr::mutate(
+      Units = "unitless",
+      EPU = dplyr::case_when(
+        Council == "MAFMC" ~ "MAB",
+        Council == "NEFMC" ~ "NE",
+        TRUE ~ Council
+      )
+    )
+
+  missing_codes <- dplyr::anti_join(
+    output,
+    decode,
+    by = c("Stock" = "Entity.Name")
+  ) |>
+    dplyr::select(Stock, Council, Code)
+
+  if (nrow(missing_codes) > 0) {
+    warning(
+      "Some stocks do not have matches in the decode table: \n",
+      paste0(missing_codes$Stock |> unique(), collapse = ", ")
+    )
+  }
+
+  return(output)
+}
 ```
 # README
 
@@ -366,6 +427,27 @@ stock_status_stockSMART |>
   knitr::kable()
 ```
 
+## Compare to what is in `ecodata`
+
+```{r}
+dplyr::anti_join(
+  stock_status_stockSMART |>
+    dplyr::mutate(Value = round(Value, 3)),
+  ecodata::stock_status |>
+    dplyr::select(-EPU) |>
+    dplyr::mutate(Value = round(Value, 3))
+)
+
+dplyr::anti_join(
+  ecodata::stock_status |>
+    dplyr::select(-EPU) |>
+    dplyr::mutate(Value = round(Value, 3)),
+  stock_status_stockSMART |>
+    dplyr::mutate(Value = round(Value, 3))
+)
+```
+
+Several stocks were updated in 2024, many of which are not reflected in `ecodata`.
 
 ## Issues
 
